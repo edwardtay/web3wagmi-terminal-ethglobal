@@ -1,10 +1,10 @@
-import { jsonResponse } from "@/lib/http";
+import { jsonResponse, failureReport, rateLimitedRecently } from "@/lib/http";
 import { allTickers24h } from "@/lib/binance";
 import { TOKENS, WALLETS, blockNumber, readBalances } from "@/lib/netflow";
 import { onchainVenue, subgraphReady, type OnchainVenue } from "@/lib/subgraph";
 import { graphHost as graphHostName } from "@/lib/graph";
 import { CALLS_PER_TOKEN, readConcentration, type Concentration } from "@/lib/concentration";
-import { NETWORK, flowNote } from "@/lib/flow";
+import { NETWORK, flowNote, flowReadStats } from "@/lib/flow";
 import {
   CALLS_PER_REFRESH,
   FLOW_WINDOWS,
@@ -41,6 +41,25 @@ const GRAPH_TTL = GRAPH_HISTORY_TTL;
 const RPC_TTL = 300;
 /** How long a partial Graph read is held before it is worth paying to retry. */
 const PARTIAL_TTL = 1800;
+/**
+ * How long to wait after being rate limited.
+ *
+ * Six hours at first, on the reasoning that the only way out of a throttle is
+ * to stop asking. That was right about the throttle and wrong about the desk: a
+ * cold container that booted into a rate limit pinned five series of fifty six
+ * for the whole six hours, with no way to improve on it.
+ *
+ * An hour now, because a refresh no longer asks for the whole desk. It asks
+ * only for the series it does not already hold, so being throttled costs less
+ * each time round and every attempt is an improvement rather than a reset.
+ */
+const THROTTLED_TTL = 3600;
+/** Short window used while a fresh container is still filling its desk. */
+const FILL_TTL = 300;
+/** How many quick attempts a fill gets before the patient windows take over. */
+const FILL_ATTEMPTS = 3;
+/** Incomplete builds since the last complete one. Resets on success. */
+let fillAttempts = 0;
 export const revalidate = 300;
 
 type WindowKey = "h1" | "h24" | "d7";
@@ -112,6 +131,10 @@ interface Payload {
     costPerMonthUsd?: number;
     /** The Graph host this deployment calls. No credential in it. */
     graphHost?: string;
+    /** Wallet-token series the last read produced, out of how many it tried. */
+    reads?: { ok: number; attempted: number };
+    /** Why reads failed, worst first. Paths only, never a query string. */
+    readFailures?: { reason: string; count: number }[];
   };
 }
 
@@ -297,6 +320,9 @@ function assemble(
             costPerMonthUsd: Number(
               costPerMonthUsd(GRAPH_TTL, TOKENS.length * CALLS_PER_TOKEN).toFixed(3)
             ),
+            graphHost: graphHostName(),
+            ...(flowReadStats() ? { reads: flowReadStats()! } : {}),
+            ...(failureReport().length ? { readFailures: failureReport() } : {}),
           }
         : {}),
     },
@@ -391,15 +417,43 @@ async function buildFromGraph(): Promise<{ payload: Payload; ttl: number } | nul
   // reporting that WBTC ownership was unavailable while the same read run
   // locally returned 193,080 holders and a 53% top-ten share.
   //
-  // So completeness decides the window. A full read is cached for the full
-  // four hours as before, and a partial one for thirty minutes, which lets it
-  // heal on its own. The extra cost applies only while the desk is degraded,
-  // which is the moment worth paying for.
+  // So completeness decides the window, and why it is incomplete decides which
+  // direction to move it. That distinction was learned the hard way: an earlier
+  // version shortened the window for every partial read, which turned a rate
+  // limit into a feedback loop. Throttled, so the desk came back short; short,
+  // so it refreshed eight times sooner; refreshed sooner, so it was throttled
+  // harder. The desk sat at five series of fifty six for hours while the same
+  // read from a developer machine returned all fifty six.
+  //
+  // A partial read caused by anything else is worth retrying sooner, because it
+  // is probably bad luck and 176 calls is a price worth paying to clear it.
+  // A partial read caused by a rate limit is worth retrying later, because the
+  // upstream has just said the opposite.
   const complete =
     payload.coverage.wallets === payload.coverage.walletsTracked &&
     payload.tokens.every((row) => (row.reservesUsd ?? 0) > 0);
 
-  return { payload, ttl: complete ? GRAPH_TTL : PARTIAL_TTL };
+  // A short window for the first few incomplete builds after a boot.
+  //
+  // A container starts with nothing held, so its first read is the full 168
+  // requests and the one most likely to be refused. Whatever that read produces
+  // is then the desk for as long as the window says, which is how a deploy
+  // during a throttle pinned five series of fifty six.
+  //
+  // Retrying quickly is now cheap in a way it was not before: the refresh asks
+  // only for the series it does not already hold, so a second attempt at a desk
+  // holding five asks for fifty one, a third asks for whatever is still
+  // missing, and each one is additive. A few fast attempts fill the desk, and
+  // the budget stops it becoming the loop that caused all this: after three the
+  // window goes back to the patient one whatever happens.
+  if (complete) {
+    fillAttempts = 0;
+    return { payload, ttl: GRAPH_TTL };
+  }
+
+  fillAttempts += 1;
+  if (fillAttempts <= FILL_ATTEMPTS) return { payload, ttl: FILL_TTL };
+  return { payload, ttl: rateLimitedRecently() ? THROTTLED_TTL : PARTIAL_TTL };
 }
 
 async function buildFromRpc(): Promise<{ payload: Payload; ttl: number }> {

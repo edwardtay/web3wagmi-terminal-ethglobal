@@ -10,6 +10,7 @@ import {
   type Network,
 } from "./graph";
 import { TOKENS, WALLETS, type TrackedToken, type Wallet } from "./netflow";
+import { clearFailures, rateLimitedRecently } from "./http";
 
 // The exchange flow desk, read from The Graph's indexed balance history instead
 // of archive JSON-RPC.
@@ -145,22 +146,67 @@ function deltaOver(points: SeriesPoint[], anchor: number, days: number): number 
  * the crypto leg badly.
  */
 async function readOne(token: TrackedToken, wallet: Wallet, revalidate: number): Promise<WalletSeries | null> {
-  const pages = await Promise.all(
-    Array.from({ length: HISTORY_PAGES }, (_, i) =>
-      token.address
-        ? balancesHistorical(NETWORK, wallet.address, {
+  // Forty five seconds, not the twenty second default.
+  //
+  // The historical endpoint walks a month of daily balances for one address and
+  // is the slowest read here by a wide margin. On a developer machine it
+  // answers in about a second and the default was never reached; in the
+  // container it sits the wrong side of twenty seconds and almost every call
+  // was being cut off. The desk reported four series of fifty six while the
+  // identical read locally returned all of them, and the page looked healthy
+  // throughout, because a desk with most of its wallets missing renders exactly
+  // like a full one.
+  //
+  // The concentration read already passes forty five for the same reason on a
+  // different endpoint, so this makes the two agree rather than inventing a
+  // number.
+  const TIMEOUT = 45_000;
+
+  /**
+   * One page, retried, because a failure here is usually the connection rather
+   * than the answer.
+   *
+   * A full refresh asks for 168 pages. At that volume the transport starts
+   * failing: measured from a developer machine, fifteen of the 168 came back as
+   * a bare fetch failure rather than any HTTP status, and the whole read slowed
+   * from five seconds to forty three. In a container it was far worse, four
+   * series of fifty six, which is a desk with almost nothing in it.
+   *
+   * A dropped connection is not an answer about the market, so it is worth
+   * asking again. Retries only ever run on failure, so a healthy refresh costs
+   * exactly what it did before.
+   */
+  const page = async (i: number) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const rows = token.address
+        ? await balancesHistorical(NETWORK, wallet.address, {
             contract: token.address,
             interval: "1d",
             page: i + 1,
             revalidate,
+            timeout: TIMEOUT,
           })
-        : balancesHistoricalNative(NETWORK, wallet.address, {
+        : await balancesHistoricalNative(NETWORK, wallet.address, {
             interval: "1d",
             page: i + 1,
             revalidate,
-          })
-    )
-  );
+            timeout: TIMEOUT,
+          });
+      if (rows) return rows;
+      // A rate limit is the one failure where trying again is the wrong answer.
+      // Retrying a 429 is another request against the thing that just refused
+      // one, and with three attempts across 168 pages it turns a throttle into
+      // a much larger throttle. Give up on this page and let the desk report a
+      // short read instead.
+      if (rateLimitedRecently()) return null;
+      // Otherwise back off rather than retry at once, because the thing that
+      // failed is a shared connection pool under load.
+      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+    }
+    return null;
+  };
+
+  const pages = await Promise.all(Array.from({ length: HISTORY_PAGES }, (_, i) => page(i)));
   // A later page failing shortens the history rather than losing the wallet.
   // Only a first page that answers nothing means there is nothing to show.
   if (!pages[0]) return null;
@@ -204,19 +250,47 @@ export function aggregateBalances(rows: WalletSeries[]): SeriesPoint[] {
   }));
 }
 
-/** Run jobs with a concurrency cap so sixty requests do not land at once. */
-async function pooled<T>(jobs: (() => Promise<T>)[], limit = 8): Promise<T[]> {
+/**
+ * Run jobs with a concurrency cap so the whole refresh does not land at once.
+ *
+ * Four rather than eight. Each job fires three pages of its own, so the real
+ * ceiling is twelve requests in flight, and eight was putting twenty four
+ * against an endpoint that walks a month of daily balances per call. That is
+ * where the connection failures were coming from.
+ */
+async function pooled<T>(jobs: (() => Promise<T>)[], limit = 4): Promise<T[]> {
   const out: T[] = new Array(jobs.length);
   let next = 0;
+  // Pace the starts as well as capping how many run at once.
+  //
+  // A concurrency cap alone bounds the requests in flight and says nothing
+  // about the rate. Four jobs of three pages each, every page answering in
+  // half a second, is roughly twenty four requests a second, and that is what
+  // the upstream was refusing: 112 of 168 came back 429 while the same read
+  // from a machine that had not been hammering it succeeded completely.
+  //
+  // Two hundred milliseconds between job starts puts the ceiling near fifteen
+  // requests a second. A full fill takes about half a minute instead of ten
+  // seconds, which costs nothing on a desk cached for four hours.
+  let lastStart = 0;
+  const gate = async () => {
+    const wait = lastStart + JOB_SPACING_MS - Date.now();
+    lastStart = Date.now() + Math.max(0, wait);
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  };
   const runners = Array.from({ length: Math.min(limit, jobs.length) }, async () => {
     while (next < jobs.length) {
       const i = next++;
+      await gate();
       out[i] = await jobs[i]();
     }
   });
   await Promise.all(runners);
   return out;
 }
+
+/** Minimum gap between starting one wallet-token read and the next. */
+const JOB_SPACING_MS = 200;
 
 /**
  * Why the last indexed read did not produce a desk, if it did not.
@@ -228,6 +302,43 @@ async function pooled<T>(jobs: (() => Promise<T>)[], limit = 8): Promise<T[]> {
 let lastFlowNote: string | null = null;
 export function flowNote(): string | null {
   return lastFlowNote;
+}
+
+/**
+ * How long one series stays good, spread deterministically around the window.
+ *
+ * Every series sharing one lifetime means they all expire together, so a desk
+ * that filled in one burst refills in one burst, four hours later, for as long
+ * as it runs. The cost is identical either way and the shape is not: 168
+ * requests at once is what draws a rate limit, and the same 168 spread across
+ * an hour does not.
+ *
+ * Deterministic in the key rather than random, so a series keeps its slot
+ * across refreshes instead of drifting into a new one each time.
+ */
+function seriesLifetimeMs(key: string, revalidate: number): number {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
+  const frac = (Math.abs(h) % 1000) / 1000;
+  // Between 60% and 100% of the window, so nothing outlives the desk's own
+  // cache and the refreshes arrive in waves rather than all at once.
+  return revalidate * 1000 * (0.6 + 0.4 * frac);
+}
+
+/**
+ * Series that have already been read successfully, by token and wallet.
+ *
+ * In process and lost on restart, which is a real limit: a container that boots
+ * into a rate limit has nothing to fall back on. It still turns a throttled
+ * refresh from a reset into a partial improvement, which is the difference
+ * between a desk that recovers and one that does not.
+ */
+const lastSeries = new Map<string, { at: number; series: WalletSeries }>();
+
+/** How many wallet-token series the last read produced, out of how many tried. */
+let lastReadStats: { ok: number; attempted: number } | null = null;
+export function flowReadStats(): { ok: number; attempted: number } | null {
+  return lastReadStats;
 }
 
 /** Requests one full read costs, so the route can state its budget honestly. */
@@ -257,17 +368,63 @@ export async function readFlowSeries(revalidate: number): Promise<WalletSeries[]
     return null;
   }
 
+  clearFailures();
+
+  // Only ask for what is missing.
+  //
+  // The refresh used to be all or nothing: fetch all fifty six series, and
+  // whatever came back became the desk. Under a rate limit that is the worst
+  // possible shape. A refresh that manages five series replaces a desk that had
+  // forty five, so being throttled does not degrade the desk gradually, it
+  // empties it, and the next refresh starts from nothing again.
+  //
+  // Holding the series that already succeeded turns each refresh into an
+  // improvement rather than a replacement. A desk at forty five of fifty six
+  // asks for eleven, which is thirty three requests rather than 168, so
+  // recovering from a throttle costs a fraction of what caused it.
+  //
+  // Bounded by the same window the desk is cached for. These are daily bars, so
+  // series read within one window share their newest bar and can be measured
+  // against one anchor; anything older is refetched rather than trusted.
+  const now = Date.now();
+  const reusable = new Map<string, WalletSeries>();
+  for (const [key, held] of lastSeries) {
+    if (now - held.at < seriesLifetimeMs(key, revalidate)) reusable.set(key, held.series);
+  }
+
   const jobs: (() => Promise<WalletSeries | null>)[] = [];
+  const wanted: string[] = [];
   for (const t of TOKENS) {
-    for (const w of WALLETS) jobs.push(() => readOne(t, w, revalidate));
+    for (const w of WALLETS) {
+      const key = `${t.sym}:${w.address}`;
+      if (reusable.has(key)) continue;
+      wanted.push(key);
+      jobs.push(() => readOne(t, w, revalidate));
+    }
   }
 
   const results = await pooled(jobs);
-  const ok = results.filter((r): r is WalletSeries => r != null && r.points.length > 0);
+  results.forEach((r, i) => {
+    if (r != null && r.points.length > 0) lastSeries.set(wanted[i], { at: now, series: r });
+  });
+
+  const ok = [...reusable.values(), ...results.filter((r): r is WalletSeries => r != null && r.points.length > 0)];
+  // How much of the read actually landed.
+  //
+  // Production was serving a desk with five wallets of fourteen and one token
+  // of four while the identical read from a developer machine returned all
+  // fourteen, and there was no way to tell from outside whether the requests
+  // were failing, timing out, or never being made. A count is the cheapest
+  // thing that distinguishes them.
+  // Against the full desk, not against however many were asked for this time,
+  // so a short read is visible rather than hidden by having asked for less.
+  lastReadStats = { ok: ok.length, attempted: TOKENS.length * WALLETS.length };
   // An empty read is a failure, not an empty market. Say so by returning null
   // so the caller can fall back rather than render a desk of blanks.
   if (!ok.length) {
-    lastFlowNote = `Every read against ${graphHost()} failed, so the desk is on its archive RPC fallback.`;
+    lastFlowNote = rateLimitedRecently()
+      ? `${graphHost()} is rate limiting this key, so the desk is on its archive RPC fallback.`
+      : `Every read against ${graphHost()} failed, so the desk is on its archive RPC fallback.`;
     return null;
   }
   lastFlowNote = null;

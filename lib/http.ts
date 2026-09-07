@@ -58,6 +58,63 @@ function memoSet(key: string, value: unknown, ttl: number): void {
  * Callers degrade a panel rather than failing the page: a terminal with one
  * dead upstream should still render every other panel.
  */
+/**
+ * Why the last reads failed, tallied by reason.
+ *
+ * Every failure here returns null, which is the right contract for a caller
+ * that must degrade rather than throw, and it is also why a desk producing four
+ * series of fifty six was impossible to diagnose from outside: null is the same
+ * answer for a timeout, a 500, a refused connection and an empty result.
+ *
+ * A bounded tally rather than a log, so it costs nothing to leave on and cannot
+ * grow. Keyed by reason and by the path that produced it, never the query
+ * string, which is where the API key would be if it were ever in one.
+ */
+const failures = new Map<string, number>();
+
+function noteFailure(url: string, reason: string) {
+  let path = url;
+  try {
+    path = new URL(url).pathname;
+  } catch {
+    // A malformed URL is itself worth seeing, so keep whatever was passed.
+  }
+  const key = `${path} ${reason}`.slice(0, 160);
+  failures.set(key, (failures.get(key) ?? 0) + 1);
+  // Bounded. The interesting failures are the repeated ones.
+  if (failures.size > 40) {
+    const oldest = failures.keys().next().value;
+    if (oldest !== undefined) failures.delete(oldest);
+  }
+}
+
+/** The recorded failures, worst first. */
+export function failureReport(limit = 6): { reason: string; count: number }[] {
+  return [...failures.entries()]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, limit);
+}
+
+/** Called before a read whose failures should be attributed to it alone. */
+export function clearFailures() {
+  failures.clear();
+}
+
+/**
+ * When an upstream last said 429.
+ *
+ * Worth knowing separately from any other failure, because it is the one where
+ * trying again is the wrong response. A timeout might be bad luck. A rate limit
+ * is the upstream saying the caller is asking too fast, and a retry is another
+ * request against the thing that just refused one.
+ */
+let lastRateLimitAt = 0;
+
+export function rateLimitedRecently(withinMs = 60_000): boolean {
+  return lastRateLimitAt > 0 && Date.now() - lastRateLimitAt < withinMs;
+}
+
 export async function getJson<T>(url: string, opts: GetJsonOptions = {}): Promise<T | null> {
   const { revalidate = 60, timeout = 9000, headers, memo = false } = opts;
 
@@ -78,11 +135,20 @@ export async function getJson<T>(url: string, opts: GetJsonOptions = {}): Promis
         signal: AbortSignal.timeout(timeout),
         ...(revalidate > 0 ? { next: { revalidate } } : { cache: "no-store" as const }),
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        if (res.status === 429) lastRateLimitAt = Date.now();
+        noteFailure(url, `HTTP ${res.status}`);
+        return null;
+      }
       const parsed = (await res.json()) as T;
       if (memo && revalidate > 0) memoSet(url, parsed, revalidate);
       return parsed;
-    } catch {
+    } catch (e) {
+      // undici reports every transport failure as the same bare "fetch failed",
+      // so the cause carries the only part that distinguishes a DNS miss from a
+      // refused connection from a socket hung up mid-response.
+      const cause = e instanceof Error && e.cause instanceof Error ? `: ${e.cause.message}` : "";
+      noteFailure(url, e instanceof Error ? `${e.name}: ${e.message}${cause}` : "unknown");
       return null;
     }
   })();
