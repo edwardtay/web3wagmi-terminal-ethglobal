@@ -1,0 +1,398 @@
+@import "tailwindcss";
+
+/* =============================================================
+   WEB3WAGMI TERMINAL · design system
+   A crypto market terminal. Light by default, dark on demand, and
+   both are first-class: the screen is meant to sit open all day.
+   Amber accent carried over from the web3wagmi brand, ink
+   typography, layered elevation, terminal chrome.
+   ============================================================= */
+
+:root[data-theme="dark"] {
+  --bg: #07090d;
+  --bg2: #0b0e14;
+  --surface: #10141c;
+  --surface2: #171d28;
+  --elevated: #141924;
+  --border: #222a38;
+  --border2: #1a212c;
+  --rule: #2b3547;
+  --text: #eef2f8;
+  /* Three tiers, all above WCAG AA on the darkest surface they sit on.
+     text3 was #5d6779, which measured 2.96 against --surface2 and made every
+     de-emphasised label, unit and hint on the page hard to read. It is a
+     de-emphasis, not a disappearance. */
+  --text2: #aab4c6;
+  --text3: #828da1;
+
+  --accent: #fbbf24;
+  --accent2: #f59e0b;
+  /* Ink for text on an accent-filled chip. The accent is the same amber in both
+     themes, so its foreground must stay dark in both and cannot use --text. */
+  --on-accent: #1a1204;
+  --accent-soft: rgba(251, 191, 36, 0.13);
+  --gold: #fbbf24;
+  /* Asset identity, not sentiment. Bitcoin's orange and Ethereum's blue are the
+     two colours a reader already associates with the assets, so a dominance bar
+     using them needs no legend to be read at a glance. */
+  --btc: #f7931a;
+  --eth: #627eea;
+  --violet: #a78bfa;
+  --cyan: #38bdf8;
+
+  --pos: #34d399;
+  --neg: #fb7185;
+  --pos-soft: rgba(52, 211, 153, 0.14);
+  --neg-soft: rgba(251, 113, 133, 0.14);
+  --green: var(--pos);
+  --red: var(--neg);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 6px 18px -6px rgba(0, 0, 0, 0.65);
+  --shadow-lg: 0 12px 36px -10px rgba(0, 0, 0, 0.75);
+  --radius: 12px;
+  --grid-line: rgba(255, 255, 255, 0.022);
+  color-scheme: dark;
+}
+
+:root,
+:root[data-theme="light"] {
+  --bg: #f6f7f9;
+  --bg2: #eef0f4;
+  --surface: #ffffff;
+  --surface2: #f2f4f8;
+  --elevated: #ffffff;
+  --border: #e1e5ec;
+  --border2: #edeff3;
+  --rule: #d6dae2;
+  --text: #0b1220;
+  --text2: #47516a;
+  /* Was #8a93a6, which measured 2.80 against --surface2: worse than the dark
+     theme's and the same failure. */
+  --text3: #5f6879;
+
+  --accent: #b45309;
+  --accent2: #f59e0b;
+  --on-accent: #1a1204;
+  --accent-soft: rgba(245, 158, 11, 0.12);
+  --gold: #b45309;
+  /* Same two identities, darkened enough to stay legible on a light ground. */
+  --btc: #d97706;
+  --eth: #4c63c9;
+  --violet: #7c3aed;
+  --cyan: #0284c7;
+
+  --pos: #05803e;
+  --neg: #d92d20;
+  --pos-soft: rgba(5, 128, 62, 0.10);
+  --neg-soft: rgba(217, 45, 32, 0.10);
+  --green: var(--pos);
+  --red: var(--neg);
+
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 4px 12px -4px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 8px 28px -8px rgba(16, 24, 40, 0.16);
+  --radius: 12px;
+  --grid-line: rgba(11, 18, 32, 0.028);
+  color-scheme: light;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  background: var(--bg);
+  /* faint terminal grid for depth */
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 32px 32px;
+  color: var(--text);
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+  font-feature-settings: "tnum";
+}
+
+.font-display {
+  font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}
+.font-mono {
+  font-family: var(--font-mono), ui-monospace, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum", "zero";
+}
+
+.pos { color: var(--pos); }
+.neg { color: var(--neg); }
+
+/* --- Cards / panels --- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+.card:hover {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  box-shadow: var(--shadow);
+}
+
+/* Heading hierarchy.
+   h2.panel-h = top-level SECTION TITLE: a filled chip that inverts with the
+   theme. span/div/h3.panel-h = in-card SUB-HEADER: a muted label, no chip, so
+   the two levels read clearly apart. */
+.panel-h {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: var(--text);
+  color: var(--bg);
+}
+h2.panel-h {
+  font-size: 0.82rem;
+  letter-spacing: 0.05em;
+}
+span.panel-h,
+div.panel-h,
+h3.panel-h {
+  display: inline;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text3);
+}
+
+/* Change chips */
+.chip-pos { color: var(--pos); background: var(--pos-soft); }
+.chip-neg { color: var(--neg); background: var(--neg-soft); }
+.chip-flat { color: var(--text3); background: var(--surface2); }
+
+/* Pills (status) */
+.pill {
+  white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 5px;
+  border-radius: 9999px; padding: 2px 9px;
+  font-family: var(--font-mono), monospace; font-size: 11px; font-weight: 600;
+  border: 1px solid var(--border);
+}
+
+/* Ticker tape */
+@keyframes tape { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.tape-track { display: inline-flex; white-space: nowrap; animation: tape 75s linear infinite; }
+.tape-track:hover { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .tape-track { animation: none; } }
+
+/* Live pulse */
+.pulse-dot {
+  width: 7px; height: 7px; border-radius: 9999px; background: var(--pos);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--pos) 60%, transparent);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--pos) 55%, transparent); }
+  70% { box-shadow: 0 0 0 6px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* Price flash on a live tick */
+@keyframes flash-up { from { background: var(--pos-soft); } to { background: transparent; } }
+@keyframes flash-down { from { background: var(--neg-soft); } to { background: transparent; } }
+.flash-up { animation: flash-up 0.6s ease-out; }
+.flash-down { animation: flash-down 0.6s ease-out; }
+@media (prefers-reduced-motion: reduce) { .flash-up, .flash-down { animation: none; } }
+
+/* Accent gradient text for the wordmark highlight */
+.accent-grad {
+  background: linear-gradient(90deg, var(--accent2), var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.thin-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.thin-scroll::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 8px; }
+.thin-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* Subtle top accent line utility for hero panels */
+.panel-accent { position: relative; overflow: hidden; }
+.panel-accent::before {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 2px;
+  background: linear-gradient(90deg, var(--accent2), transparent);
+}
+
+/* A light travelling along the top edge of the dislocation queue.
+   The queue is the one panel worth looking at before the rest of the page, and
+   a static rule does not say so. This is the only motion in the app, which is
+   what makes it work: a terminal where several things move has nothing that
+   draws the eye. */
+.panel-accent::after {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 35%,
+    color-mix(in srgb, var(--accent) 85%, white) 50%,
+    transparent 65%,
+    transparent 100%
+  );
+  background-size: 220% 100%;
+  animation: panel-sweep 4.5s linear infinite;
+  pointer-events: none;
+}
+@keyframes panel-sweep {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
+}
+/* Anyone who has asked for less motion gets the static rule and nothing else. */
+@media (prefers-reduced-motion: reduce) {
+  .panel-accent::after { animation: none; opacity: 0; }
+}
+
+/* Dense data table: capped height, sticky header, wrapping cells.
+   Long tables scroll inside the card rather than truncating any cell. */
+.tbl { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+.tbl th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--surface2); color: var(--text3);
+  font-family: var(--font-mono), monospace; font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  text-align: left; padding: 7px 10px; white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+.tbl td {
+  padding: 7px 10px; border-bottom: 1px solid var(--border2);
+  color: var(--text2); vertical-align: top; overflow-wrap: break-word;
+}
+.tbl tbody tr:hover td { background: var(--surface2); }
+.tbl td.num, .tbl th.num { text-align: right; font-family: var(--font-mono), monospace; white-space: nowrap; }
+
+/* A sortable header is a button inside the th, so it has to inherit the header's
+   type rather than a browser's idea of a control. */
+.tbl th button {
+  font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit;
+  background: none; border: 0; padding: 0; cursor: pointer;
+}
+.tbl th.num button { width: 100%; justify-content: flex-end; }
+/* A header carrying a caveat says so. Without a mark the tooltip is a secret,
+   and these hold the things a professional cannot read off the number: which
+   cadence a rate was annualised on, whether a blank is a zero or an absence. */
+.tbl th[title] { text-decoration: underline dotted var(--text3); text-underline-offset: 4px; cursor: help; }
+/* Identifier cells: a pool pair, a date, a ticker. These are single tokens, so
+   `overflow-wrap: anywhere` shreds them into one character per line once the
+   table is squeezed on a phone. Keep them on one line and let the wrapper
+   scroll instead, which shows the whole value rather than truncating it. */
+.tbl td.ident, .tbl th.ident { white-space: nowrap; overflow-wrap: normal; }
+/* The first column of a dense table is usually the identity of the row: a
+   ticker plus a name plus a badge. Left to itself the browser hands every pixel
+   to the numeric columns and squeezes this one until its words shred, so it
+   gets a floor and the wrapper scrolls instead.
+   Not when it is numeric. A rank column holds two characters and a 132px floor
+   made it the widest thing on the chain board. */
+.tbl td:first-child:not(.num), .tbl th:first-child:not(.num) { min-width: 132px; }
+.tbl td.num:first-child, .tbl th.num:first-child { width: 1%; }
+/* Opt out where the first column is already short and fixed in length, such as
+   an expiry date. The floor exists for a ticker plus a name plus a badge, and on
+   a phone it was making "8 Sep 26" the widest thing on the options ladder. */
+.tbl-tight td:first-child, .tbl-tight th:first-child { min-width: 0; }
+
+/* ===== SHARED BRAND STRIP: the canonical web3wagmi lockup, mapped onto the
+   terminal's theme tokens so it works in both modes. Two stacked 44px sticky
+   strips: brand on top, cross-site menu below, so any page header sits at
+   top:88px. Keep the structure identical across web3wagmi sites. ===== */
+.site-brand {
+  background: color-mix(in srgb, var(--bg2) 85%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(8px);
+  backdrop-filter: saturate(180%) blur(8px);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 101;
+}
+.site-brand-inner { position: relative; max-width: 1280px; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; justify-content: center; height: 44px; }
+.site-brand-link { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; transition: opacity 0.15s ease; }
+.site-brand-link:hover { opacity: 0.85; }
+.site-brand-mark { width: 34px; height: 34px; display: block; flex-shrink: 0; }
+.site-brand-text { font-family: var(--font-display), sans-serif; font-size: 26px; font-weight: 900; color: var(--text); letter-spacing: -0.5px; line-height: 1; }
+.site-brand-text span { color: var(--accent2); }
+.site-nav-item { display: inline-flex; align-items: center; }
+.site-nav-dot { color: var(--text3); opacity: 0.45; font-size: 11px; line-height: 1; user-select: none; pointer-events: none; }
+
+.site-nav {
+  background: color-mix(in srgb, var(--bg2) 85%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(8px);
+  backdrop-filter: saturate(180%) blur(8px);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px; font-weight: 600;
+  position: sticky; top: 44px; z-index: 100;
+}
+.site-nav-inner { max-width: 1280px; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; justify-content: center; gap: 0; height: 44px; }
+.site-nav a.site-nav-link { position: relative; color: var(--text3); text-decoration: none; padding: 5px 18px; text-transform: uppercase; letter-spacing: 0.14em; transition: color 0.15s ease; }
+.site-nav a.site-nav-link:hover { color: var(--text); }
+.site-nav a.site-nav-link.active { color: var(--accent); }
+.site-nav a.site-nav-link.active::before { content: ""; position: absolute; left: 18px; right: 18px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent2); }
+
+@media (max-width: 640px) {
+  .site-brand-inner { padding: 0 12px; height: 44px; }
+  .site-brand-mark { width: 30px; height: 30px; }
+  .site-brand-text { font-size: 22px; }
+  .site-nav-inner { padding: 0 8px; height: 44px; flex-wrap: nowrap; justify-content: center; overflow-x: auto; scrollbar-width: none; }
+  .site-nav-inner::-webkit-scrollbar { display: none; }
+  .site-nav a.site-nav-link { padding: 6px 11px; font-size: 11px; letter-spacing: 0.1em; min-height: 44px; display: flex; align-items: center; flex-shrink: 0; white-space: nowrap; }
+  .site-nav a.site-nav-link.active::before { left: 11px; right: 11px; }
+}
+@media (max-width: 360px) {
+  .site-brand-text { font-size: 19px; }
+  .site-brand-mark { width: 26px; height: 26px; }
+  .site-nav a.site-nav-link { padding: 6px 8px; font-size: 10px; letter-spacing: 0.06em; }
+  .site-nav a.site-nav-link.active::before { left: 8px; right: 8px; }
+}
+
+/* The page shell. Header, body and footer must share one width or the brand
+   sits inset from the nav directly beneath it, which is what four different
+   max-widths were doing. */
+.shell {
+  margin-inline: auto;
+  width: 100%;
+  max-width: 1440px;
+  padding-inline: 1rem;
+}
+
+/* The focused instrument's zone.
+   Everything the focus control drives sits inside this tint, so the boundary
+   between "this asset" and "the whole market" is visible rather than something
+   a reader has to infer from section headings. It bleeds past the shell padding
+   on purpose: a band that stops short of the edge reads as another card. */
+.focus-zone {
+  background: var(--accent-soft);
+  border-radius: 16px;
+  padding: 12px;
+  margin-inline: -12px;
+}
+@media (min-width: 640px) {
+  .focus-zone { padding: 16px; margin-inline: -16px; }
+}
+
+/* The assistant bubble.
+   Filled in the accent and breathing, because it is the one control on the page
+   a reader has no reason to expect. The glow is a box-shadow rather than a
+   filter so it does not create a containing block for anything fixed. */
+.ask-bot-fab {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  box-shadow: 0 6px 20px -4px color-mix(in srgb, var(--accent2) 60%, transparent);
+  animation: ask-bot-breathe 3.2s ease-in-out infinite;
+  transition: transform 0.15s ease;
+}
+.ask-bot-fab:hover { transform: scale(1.06); }
+@keyframes ask-bot-breathe {
+  0%, 100% { box-shadow: 0 6px 20px -4px color-mix(in srgb, var(--accent2) 55%, transparent); }
+  50% { box-shadow: 0 6px 30px 2px color-mix(in srgb, var(--accent2) 85%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ask-bot-fab { animation: none; }
+}
