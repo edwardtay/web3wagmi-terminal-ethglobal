@@ -54,9 +54,17 @@ const PARTIAL_TTL = 1800;
  * each time round and every attempt is an improvement rather than a reset.
  */
 const THROTTLED_TTL = 3600;
-/** Short window used while a fresh container is still filling its desk. */
-const FILL_TTL = 300;
-/** How many quick attempts a fill gets before the patient windows take over. */
+/**
+ * Window used while a fresh container is still filling its desk.
+ *
+ * Fifteen minutes rather than the five tried first. A retry is only cheap when
+ * the desk already holds most of what it needs; a container that cold started
+ * into a refused window holds almost nothing, so its next attempt asks for
+ * almost everything again. Five minutes of that is the same feedback loop this
+ * whole desk has been fighting, with a friendlier name.
+ */
+const FILL_TTL = 900;
+/** How many attempts a fill gets before the patient windows take over. */
 const FILL_ATTEMPTS = 3;
 /** Incomplete builds since the last complete one. Resets on success. */
 let fillAttempts = 0;

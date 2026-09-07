@@ -289,8 +289,20 @@ async function pooled<T>(jobs: (() => Promise<T>)[], limit = 4): Promise<T[]> {
   return out;
 }
 
-/** Minimum gap between starting one wallet-token read and the next. */
-const JOB_SPACING_MS = 200;
+/**
+ * Minimum gap between starting one wallet-token read and the next.
+ *
+ * A second, not the 200ms tried first. The limit turned out to be a budget over
+ * a window rather than a ceiling on requests per second: 153 requests went
+ * through with no failures at all, and 168 more two minutes later were refused
+ * 154 times. Both were paced identically, so the rate was never the thing that
+ * distinguished them.
+ *
+ * At a second apart a full fill of 168 requests takes about a minute, which is
+ * nothing against a desk cached for four hours, and it leaves the window enough
+ * room that a refresh landing near another one does not empty it.
+ */
+const JOB_SPACING_MS = 1000;
 
 /**
  * Why the last indexed read did not produce a desk, if it did not.
