@@ -1,0 +1,144 @@
+// Extract the token icons this terminal needs into `public/icons/tokens`.
+//
+// The icons come from @web3icons/core, which is the set The Graph's Token API
+// points at: every `/v1/evm/tokens` response carries an `icon.web3icon` name.
+// So the logos and the data name the same thing, which is why this beats a
+// logo API that guesses from a ticker.
+//
+// The package is 18MB and ships its SVGs wrapped in .js modules, and we need
+// about thirty of them. Depending on it at runtime to use 0.2% of it would be
+// silly, and the CSP here is `img-src 'self'`, so a CDN is not an option
+// either. This pulls the tarball, unwraps the few we want, and writes real SVG
+// files that ship as static assets.
+//
+//   node scripts/icons.mjs
+//
+// Run it when the tracked universe in `lib/symbols.ts` changes. The output is
+// committed, so a normal build and deploy never touches the network for this.
+
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, readdirSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const OUT = join(root, "public", "icons", "tokens");
+
+/**
+ * Where our ticker and the icon set disagree.
+ *
+ * Only for a token that is the same asset under another name. Never map to a
+ * merely similar ticker: the set has TONIC and WIFI, which are different
+ * projects from TON and WIF, and shipping one as the other would put a wrong
+ * logo next to a real number.
+ */
+const ALIASES = { RENDER: "RNDR" };
+
+/**
+ * Every ticker the terminal renders, from both places it keeps one.
+ *
+ * `symbols.ts` holds the traded universe and `netflow.ts` holds the flow desk's
+ * tokens, which are stablecoins and wrapped assets that appear nowhere in the
+ * first list. Reading only one of them left USDT, USDC and WBTC as lettered
+ * badges on a panel where they are the whole subject.
+ */
+function symbols() {
+  const files = [join(root, "lib", "symbols.ts"), join(root, "lib", "netflow.ts")];
+  const found = files.flatMap((f) =>
+    [...readFileSync(f, "utf8").matchAll(/sym:\s*"([A-Z0-9]+)"/g)].map((m) => m[1])
+  );
+  // WETH is what the flow desk measures when a row says ETH, so its icon is
+  // wanted even though no row is labelled WETH.
+  return [...new Set([...found, "WETH"])];
+}
+
+function fetchPackage() {
+  const dir = mkdtempSync(join(tmpdir(), "web3icons-"));
+  const tarball = execFileSync("npm", ["pack", "@web3icons/core", "--pack-destination", dir], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  })
+    .trim()
+    .split("\n")
+    .pop();
+  execFileSync("tar", ["xzf", join(dir, tarball), "-C", dir]);
+  return dir;
+}
+
+/** The SVG lives inside a js module as a single quoted string. */
+function unwrap(js) {
+  const start = js.indexOf("'");
+  const end = js.lastIndexOf("'");
+  if (start < 0 || end <= start) return null;
+  return js
+    .slice(start + 1, end)
+    .replace(/\\n/g, "\n")
+    .replace(/\\'/g, "'")
+    .replace(/\\\\/g, "\\");
+}
+
+const syms = symbols();
+const pkg = fetchPackage();
+mkdirSync(OUT, { recursive: true });
+
+const written = [];
+const missing = [];
+for (const sym of syms) {
+  const name = ALIASES[sym] ?? sym;
+  // `background` rather than `branded`. A branded icon is the bare mark, and
+  // several are drawn in white because they expect to sit on the brand's own
+  // colour: ARB, XRP and WBTC measured 1.00 against a light page, which is
+  // invisible, and NEAR and BNB were not much better. The background variant
+  // carries its own ground, so every icon is legible on either theme without
+  // the component knowing anything about the token.
+  const dir = join(pkg, "package", "dist", "svgs", "tokens");
+  const src = [join(dir, "background", `${name}.svg.js`), join(dir, "branded", `${name}.svg.js`)].find(existsSync);
+  if (!src) {
+    missing.push(sym);
+    continue;
+  }
+  const svg = unwrap(readFileSync(src, "utf8"));
+  if (!svg) {
+    missing.push(sym);
+    continue;
+  }
+  writeFileSync(join(OUT, `${sym.toLowerCase()}.svg`), svg);
+  written.push(sym);
+}
+
+// A manifest, so the component knows what exists without firing a request that
+// 404s and then falling back. TON and WIF have no icon in the set and should
+// render as a lettered badge from the first paint, not after a failed load.
+// Hash of everything written, used as a cache-busting suffix. Icons live at a
+// stable path, so replacing the art leaves browsers serving the old file
+// forever: ARB and XRP kept rendering as blank circles from a cache holding the
+// white-mark version they used to be.
+const stamp = createHash("sha1")
+  .update(written.sort().join(",") + readdirSync(OUT).map((f) => statSync(join(OUT, f)).size).join(","))
+  .digest("hex")
+  .slice(0, 8);
+
+writeFileSync(
+  join(root, "lib", "tokenIcons.ts"),
+  `// Generated by scripts/icons.mjs. Do not edit.\n` +
+    `export const TOKEN_ICON_VERSION = "${stamp}";\n` +
+    `// Tokens with an icon in public/icons/tokens. Anything absent renders as a\n` +
+    `// lettered badge, which beats a wrong logo.\n\n` +
+    `export const TOKEN_ICONS = new Set<string>([\n` +
+    written
+      .sort()
+      .map((s) => `  "${s}",`)
+      .join("\n") +
+    `\n]);\n`
+);
+
+rmSync(pkg, { recursive: true, force: true });
+
+console.log(`wrote ${written.length} icons to public/icons/tokens`);
+if (missing.length) {
+  // Not an error. The set does not cover everything, and a ticker with no icon
+  // renders as a lettered badge, which is better than a wrong logo.
+  console.log(`no icon in the set for: ${missing.join(", ")}`);
+}
