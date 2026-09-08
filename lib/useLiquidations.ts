@@ -264,16 +264,31 @@ export function useLiquidations(): LiquidationsState {
       } else {
         closedByUs.current = false;
         attempts.current = 0;
+        // A socket the OS tore down while the page was suspended is still an
+        // object here, with a readyState that says it is finished. Clear it
+        // before reconnecting or the tape stays frozen looking live.
+        const s = ws.current;
+        if (s && s.readyState !== WebSocket.OPEN && s.readyState !== WebSocket.CONNECTING) {
+          ws.current = null;
+        }
         connect();
       }
     };
 
+    // Restoring from the back/forward cache does not reliably fire
+    // visibilitychange, and the sockets are dead by then.
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted && !document.hidden) onVisibility();
+    };
+
     document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pageshow", onPageShow);
     connect();
 
     return () => {
       closedByUs.current = true;
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pageshow", onPageShow);
       if (retryTimer.current) clearTimeout(retryTimer.current);
       ws.current?.close();
       ws.current = null;

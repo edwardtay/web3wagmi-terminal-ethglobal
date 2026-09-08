@@ -93,9 +93,14 @@ export function AskBot() {
 
   return createPortal(
     <>
+      {/* A heavier edge than a card's. This floats over a page already made of
+          bordered panels, so a one pixel hairline in the same colour read as
+          another panel that happened to be on top rather than as something that
+          had just opened. The accent border and the ring around it give a clear
+          outside edge without adding a fourth surface colour. */}
       {open && (
-        <div className="fixed bottom-[76px] right-4 z-[140] flex w-[min(360px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-lg)]">
-          <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] px-3 py-2">
+        <div className="fixed bottom-[76px] right-4 z-[140] flex w-[min(360px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border-2 border-[var(--accent)] bg-[var(--surface)] shadow-[0_0_0_4px_var(--accent-soft),var(--shadow-lg)]">
+          <div className="flex items-center justify-between gap-2 border-b-2 border-[var(--border)] bg-[var(--bg2)] px-3 py-2">
             <span className="font-display text-[12px] font-bold tracking-tight text-[var(--text)]">
               Ask the terminal
             </span>

@@ -1,6 +1,7 @@
 import { CommandPalette } from "@/components/CommandPalette";
 import { TerminalHeader } from "@/components/TerminalHeader";
 import { SideNav } from "@/components/SideNav";
+import { SectionBar } from "@/components/SectionBar";
 import { SymbolProvider } from "@/components/SymbolProvider";
 import { Section } from "@/components/ui";
 import { Defer } from "@/components/Defer";
@@ -58,6 +59,8 @@ export default async function Home({
       <CommandPalette />
       <TerminalHeader />
       <Tape />
+      {/* Section tracking for the screens the side rail does not reach. */}
+      <SectionBar />
 
       <div className="shell flex gap-6 py-6">
         <SideNav />
@@ -129,9 +132,9 @@ export default async function Home({
         <div id="onchain" className="scroll-mt-[186px] xl:scroll-mt-[145px]">
           <ExchangeNetflow />
 
-          <Defer minHeight={320}><DexPools /></Defer>
+          <DexPools />
 
-          <Defer minHeight={320}><ChainBoard /></Defer>
+          <ChainBoard />
 
           <Section
             title="Protocols"
@@ -140,7 +143,7 @@ export default async function Home({
             <Defer minHeight={320}><ProtocolMovers /></Defer>
           </Section>
 
-          <Defer minHeight={320}><Stablecoins /></Defer>
+          <Stablecoins />
 
           <Section
             title="Yields"

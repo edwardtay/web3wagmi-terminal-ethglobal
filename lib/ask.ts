@@ -26,6 +26,34 @@ const BASE = process.env.LLM_BASE_URL ?? "https://api.groq.com/openai/v1";
 const MODEL = process.env.GROQ_MODEL ?? "openai/gpt-oss-120b";
 
 /**
+ * Primary keys, comma separated, each with its own daily allowance.
+ *
+ * The free tier meters tokens per day per account, and that ceiling is low
+ * enough to matter: a handful of real questions plus a QA pass exhausts it, and
+ * the reader then gets "the model is rate limited" instead of an answer. Three
+ * keys is three allowances against the same model, so the assistant stays up
+ * through a demo rather than dying in the middle of one.
+ *
+ * A rate limit belongs to a key rather than to the provider, which is the whole
+ * reason this works. Everything else about the request is identical.
+ */
+const KEYS = (process.env.GROQ_API_KEY ?? process.env.LLM_API_KEY ?? "")
+  .split(",")
+  .map((k) => k.trim())
+  .filter(Boolean);
+
+/**
+ * Which key to try first.
+ *
+ * Module scope rather than per request, on purpose. A key that just answered
+ * 429 will answer 429 to the next reader too, so starting from the top every
+ * time means paying for the same refusal on every question until the day rolls
+ * over. Advancing past it once makes the exhausted key cost one request rather
+ * than one per question.
+ */
+let keyCursor = 0;
+
+/**
  * A second provider, tried when the first refuses.
  *
  * Groq's free tier rate limits on bursts and will eventually run out of credit,
@@ -71,7 +99,7 @@ const RETRYABLE = new Set([0, 402, 408, 429, 500, 502, 503, 504]);
 const MAX_ROUNDS = 3;
 
 export function askReady(): boolean {
-  return Boolean(process.env.GROQ_API_KEY ?? process.env.LLM_API_KEY);
+  return KEYS.length > 0;
 }
 
 // ---- the tools -----------------------------------------------------------
@@ -192,6 +220,17 @@ interface DerivsPayload {
     /** CEX minus DEX, in annualised percent. */
     spread: number | null;
   }[];
+  oi?: {
+    sym: string;
+    /** Notional on the Binance perp. */
+    oiUsd: number;
+    /** Change in contract count, which is what the regime is read from. */
+    oiChangePct: number | null;
+    /** Contracts on Hyperliquid, null when the coin is not listed there. */
+    hlOi: number | null;
+    hlOiChangePct: number | null;
+    regime: string;
+  }[];
 }
 
 export const TOOLS: ToolSpec[] = [
@@ -310,11 +349,18 @@ export const TOOLS: ToolSpec[] = [
       // the first.
       if (want && rows.length === 0) {
         return {
-          error: `${want} is not tracked by this desk. It covers ${d.tokens.map((r) => r.sym).join(", ")} on Ethereum only. This is a coverage limit, not an outage, and asking again later will not change it.`,
+          // The limit has to name the desk it belongs to, or it gets applied to
+          // every other reading in the answer. Asked whether SOL was crowded,
+          // the model read SOL funding correctly from the derivatives board and
+          // then announced that SOL positioning was not covered, because this
+          // sentence had told it SOL was not tracked and did not say by what.
+          error: `${want} has no exchange flow here. THIS LIMIT APPLIES ONLY TO EXCHANGE FLOW AND ONCHAIN OWNERSHIP, which cover ${d.tokens
+            .map((r) => r.sym)
+            .join(", ")} on Ethereum. Every other desk, including funding, open interest, liquidations, options and price, covers ${want} normally. Answer the question from those and mention this gap only if the question was specifically about flow or ownership. It is a coverage limit rather than an outage.`,
         };
       }
       return {
-        scope: `${d.coverage.wallets} labelled Ethereum exchange wallets across ${d.coverage.venues} venues. A sample, not total exchange reserves.`,
+        scope: `${d.coverage.wallets} labelled Ethereum exchange wallets across ${d.coverage.venues} venues. A sample, not total exchange reserves. This scope describes exchange flow only and says nothing about which assets the other desks cover.`,
         totalReserves: usd(d.totals.reservesUsd),
         assets: rows.map((r) => ({
           symbol: r.sym,
@@ -370,7 +416,7 @@ export const TOOLS: ToolSpec[] = [
   {
     name: "derivatives",
     description:
-      "Perpetual funding rates, annualised, ranked. Use for questions about positioning, crowding, or what leveraged traders are paying to hold.",
+      "Perpetual funding rates and open interest, across both venues. Use for questions about positioning, crowding, leverage, what traders are paying to hold, or how much is at risk on each venue.",
     parameters: {
       type: "object",
       properties: {
@@ -401,10 +447,33 @@ export const TOOLS: ToolSpec[] = [
           hyperliquidPerpAnnualisedPercent: round(f.hlAnnual),
           binanceMinusHyperliquid: round(f.spread),
         }));
+      // Open interest, which the tool used to leave out entirely.
+      //
+      // The board carries it on screen and the model could not see it, so a
+      // question as ordinary as how open interest splits between the two venues
+      // was answered with "the data provided does not contain open interest
+      // figures". A terminal denying what it is displaying is worse than one
+      // that never had the number.
+      const oiRows = [...(d.oi ?? [])]
+        .filter((o) => !want || o.sym === want)
+        .sort((x, y) => y.oiUsd - x.oiUsd)
+        .slice(0, want ? 3 : 10)
+        .map((o) => ({
+          asset: o.sym,
+          binanceOpenInterestUsd: usd(o.oiUsd),
+          binanceContractsChange24hPercent: round(o.oiChangePct),
+          // Contracts rather than dollars, and named so, because the two are
+          // not interchangeable and the difference is the whole reading.
+          hyperliquidOpenInterestContracts: o.hlOi == null ? null : Math.round(o.hlOi),
+          hyperliquidContracts1hChangePercent: round(o.hlOiChangePct),
+          regime: o.regime,
+        }));
+
       return {
         funding: rows,
+        openInterest: oiRows,
         interpretationNotes:
-          "Annualised percent, comparable across contracts. Binance is a centralised exchange and Hyperliquid is the onchain perp venue: do not describe either as the other. Positive means longs pay shorts to hold, so the crowd is long. Negative means shorts pay, which is rarer and usually sharper. Ranked by distance from zero, so the first rows are the crowded ones. A rate in single digits is unremarkable, and a wide gap between the two venues is the interesting case.",
+          "Annualised percent, comparable across contracts. Binance is a centralised exchange and Hyperliquid is the onchain perp venue: do not describe either as the other. Positive means longs pay shorts to hold, so the crowd is long. Negative means shorts pay, which is rarer and usually sharper. Ranked by distance from zero, so the first rows are the crowded ones. A rate in single digits is unremarkable, and a wide gap between the two venues is the interesting case. Open interest is dollars on Binance and contracts on Hyperliquid, which are different units and must never be added together or compared as if they were the same number. Direction comes from the contract change, never the dollar one, because notional rises with price and would call every rally new longs. A null Hyperliquid reading means the coin is not listed there, not that it is zero.",
       };
     },
   },
@@ -450,6 +519,7 @@ Other rules you do not break:
 - No hedging, no disclaimers about volatility, no advice to do your own research. The reader is a market participant.
 - You cover what this terminal measures: prices, funding, open interest, options, exchange flow, onchain liquidity and ownership. Asked to explain a concept, a protocol or how something works in general, say that is not what this terminal reads and that the web3wagmi guides cover it. Do not attempt the explanation from memory.
 - When a tool says an asset is not tracked, say it is not tracked and name what is. Do not soften a coverage limit into "not available at the moment", which describes an outage and invites the reader to try again.
+- A coverage limit belongs to the desk that reported it and to nothing else. The exchange flow desk covers four tokens on Ethereum; the funding, open interest, liquidations, options and price desks cover the whole tracked universe. If one desk has no reading for an asset and another does, answer from the one that does. Never announce that an asset is not covered while quoting a number you just read for it.
 - When a tool returns an interpretation, that is the reading. Use it and do not substitute your own. Deriving a direction from the sign of a number is the one mistake that matters here, and the conventions are not intuitive.
 - If a field is null, it does not apply to that asset. Do not reason about it.
 - Answer the question that was asked. Selling pressure means coins arriving, positioning and liquidations, so a stablecoin inflow is not an answer to it: stablecoins arriving is buying power and belongs in the reply only as the other side of the picture, never as the lead.
@@ -527,7 +597,14 @@ function plain(s: string): string {
     // once the fallback is actually carrying traffic.
     .replace(/\*\*(.+?)\*\*/g, "$1")
     .replace(/(^|\s)\*(\S[^*]*?)\*(?=\s|[.,;:!?)]|$)/g, "$1$2")
-    .replace(/^#{1,6}\s+/gm, "");
+    .replace(/^#{1,6}\s+/gm, "")
+    // A spaced hyphen doing the job of a dash. The style rule against dashes as
+    // punctuation is not about the character, it is about the construction, and
+    // converting an em dash to "-" only disguises it: "shorts are paying longs
+    // to hold - a rarer configuration" is the same sentence the rule forbids.
+    // A comma carries it. Negative numbers are untouched, since those are
+    // "-3.5" with no space after, and so are ranges like "1-2".
+    .replace(/ +- +/g, ", ");
 }
 
 /**
@@ -715,6 +792,24 @@ interface Session {
 const OUT_OF_SCOPE =
   "That is not something this terminal measures. It reads prices, funding, open interest, options, exchange flow, onchain liquidity and ownership. For concepts and how protocols work, the web3wagmi guides cover them.";
 
+/**
+ * The answer if this reply carries one, or null if it does not.
+ *
+ * Both failures are the same thing from the reader's side: no answer. An empty
+ * completion and a completion that is really a scratchpad both need another
+ * attempt rather than a different message, so they are judged in one place.
+ */
+function usable(reply: ChatMessage | null): string | null {
+  const raw = reply?.content ? plain(reply.content) : null;
+  if (!raw) return null;
+  if (leaked(raw)) {
+    console.error("[ask] discarded a leaked reasoning answer");
+    return null;
+  }
+  const out = tighten(raw);
+  return out.trim() ? out : null;
+}
+
 /** Sentences, counted crudely. Decimals in "$1.4m" must not count as ends. */
 function sentenceCount(text: string): number {
   return text.split(/(?<=[.!?])\s+(?=[A-Z(])/).filter((s) => s.trim().length > 0).length;
@@ -822,13 +917,42 @@ function leaked(text: string): boolean {
   return /\b(let me|i need to|i'll structure|following the rules|now i need|my answer should)\b/.test(head);
 }
 
+/**
+ * The primary provider, trying each key until one answers.
+ *
+ * Starts at whichever key last worked and walks the whole ring once, so an
+ * exhausted key is skipped rather than rediscovered. Only failures worth
+ * retrying move the cursor: a 400 is a bad request and the next key will
+ * refuse it in exactly the same way.
+ */
+async function callPrimary(
+  messages: ChatMessage[],
+  withTools: boolean
+): Promise<{ message?: ChatMessage; status?: number; detail?: string }> {
+  let last: { message?: ChatMessage; status?: number; detail?: string } = { status: 0 };
+  for (let i = 0; i < KEYS.length; i++) {
+    const at = (keyCursor + i) % KEYS.length;
+    const res = await callProvider(BASE, KEYS[at], MODEL, messages, withTools);
+    if (res.message) {
+      keyCursor = at;
+      return res;
+    }
+    last = res;
+    if (res.status != null && !RETRYABLE.has(res.status)) break;
+    if (KEYS.length > 1) {
+      // Never log the key itself, only which of them it was.
+      console.error(`[ask] key ${at + 1}/${KEYS.length} gave ${res.status}, trying the next`);
+    }
+  }
+  return last;
+}
+
 async function chat(
   messages: ChatMessage[],
   withTools: boolean,
   session: Session
 ): Promise<ChatMessage | null> {
-  const key = process.env.GROQ_API_KEY ?? process.env.LLM_API_KEY;
-  if (!key) {
+  if (KEYS.length === 0) {
     lastError = "No model key.";
     return null;
   }
@@ -845,7 +969,7 @@ async function chat(
     session.fallbackModel = null;
   }
 
-  const primary = await callProvider(BASE, key, MODEL, messages, withTools);
+  const primary = await callPrimary(messages, withTools);
   if (primary.message) {
     lastError = null;
     return portable(primary.message);
@@ -1029,7 +1153,8 @@ export async function ask(question: string, origin: string, focus?: string): Pro
     .map((m) => m.content)
     .join("\n\n");
 
-  const final = await chat(
+  const synthesise = () =>
+    chat(
     [
       { role: "system", content: SYSTEM },
       {
@@ -1063,33 +1188,51 @@ export async function ask(question: string, origin: string, focus?: string): Pro
     session
   );
 
+  // Two attempts at the answer, because the failures here are coin flips.
+  //
+  // QA caught both shapes on questions a reader would actually ask. "Is it
+  // crowded" with a focused asset came back as "the model ran out of tool
+  // rounds without answering", and an unknown ticker came back as "the model
+  // did not answer cleanly", and both produced a good answer when asked again a
+  // moment later with nothing changed.
+  //
+  // An intermittent dead end is worse than a consistent one. The reader has no
+  // way to know that asking the same question again is the fix, so the answer
+  // that never arrives reads as a broken terminal rather than a hiccup. The
+  // second attempt costs a call only when the first produced nothing usable.
+  let final = await synthesise();
+  let answer = usable(final);
+  if (!answer) {
+    console.error("[ask] first synthesis produced nothing usable, retrying");
+    final = await synthesise();
+    answer = usable(final);
+  }
+
   // A fallback model leaked its whole scratchpad into the answer field: it
   // opened "Let me analyze what I've gathered from the tools", enumerated every
   // JSON key it had read, and reasoned about the house style rules in front of
   // the reader. The prompt forbids all of that, and a model that ignores the
   // prompt cannot be fixed by more prompt. Better to say nothing than to show a
   // reader the machinery and call it an answer.
-  const raw = final?.content ? plain(final.content) : null;
-  if (raw && leaked(raw)) {
-    console.error("[ask] discarded a leaked reasoning answer");
-    return { ok: false, answer: null, used, note: "The model did not answer cleanly. Ask again." };
+  if (!answer) {
+    return {
+      ok: false,
+      answer: null,
+      used,
+      note: lastError ?? "The desks answered but the summary did not. Ask again.",
+    };
   }
-
-  let answer = raw ? tighten(raw) : null;
   // The prompt asks for two to four sentences and the model agrees, then opens
   // with "Short answer:" and a desk-by-desk breakdown anyway. Three rounds of
   // rewording the instruction did not hold it, so the length is enforced here
   // instead. tighten() removes the structure deterministically; a rewrite only
   // runs when the result is genuinely still too long, because it costs a call.
-  if (answer && (structured(raw ?? "") || sentenceCount(answer) > 5)) {
+  // Judged on what the model wrote, not on what tighten() left behind, because
+  // tighten strips the very structure that says a rewrite is needed.
+  if (structured(final?.content ?? "") || sentenceCount(answer) > 5) {
     const shorter = await compress(answer, session);
     if (shorter) answer = shorter;
   }
 
-  return {
-    ok: Boolean(answer),
-    answer,
-    used,
-    note: answer ? null : (lastError ?? "The model ran out of tool rounds without answering."),
-  };
+  return { ok: true, answer, used, note: null };
 }

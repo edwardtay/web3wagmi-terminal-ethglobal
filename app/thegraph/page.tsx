@@ -67,6 +67,15 @@ export default function TheGraphPage() {
                   of a trading day are noise. Deposits worth several days are something the venue
                   has to work to take.
                 </p>
+                <p>
+                  A third Token API dataset,{" "}
+                  <strong className="text-[var(--text)]">Hyperliquid liquidations</strong>, feeds the{" "}
+                  <Link href="/#liquidations" className="underline hover:text-[var(--text)]">
+                    liquidation tape
+                  </Link>
+                  . It is the leveraged side of the same question: flow is supply arriving to be
+                  sold, and a forced close is supply that will be sold whatever the holder wants.
+                </p>
               </Note>
 
               <Note title="Load-bearing, not decorative">

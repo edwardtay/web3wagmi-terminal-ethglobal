@@ -16,6 +16,12 @@ import { useEffect, useRef, useState } from "react";
 // anchor id stay in the markup, so the side navigation still jumps correctly
 // and nothing in the page outline depends on having scrolled past it.
 //
+// That rule has a sharp edge worth stating: a few panels render their own
+// Section and carry the anchor id themselves. Wrapping one of those puts the id
+// inside the placeholder, so it is absent from the document until the reader
+// scrolls near it, and both the anchor and the scroll spy that looks the id up
+// stop working. Only wrap a panel whose id lives on a Section above it.
+//
 // The margin is deliberately generous: the work should already be done by the
 // time the panel is actually on screen, so this reads as a faster page rather
 // than as a page that loads while you watch.

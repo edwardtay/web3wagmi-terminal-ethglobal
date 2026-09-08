@@ -1,5 +1,5 @@
 import { getJson, postJson, jsonResponse } from "@/lib/http";
-import { hyperliquidLiquidations } from "@/lib/graph";
+import { hyperliquidLiquidations, hyperliquidOi } from "@/lib/graph";
 import {
   FAPI,
   allPremiumIndex,
@@ -92,6 +92,17 @@ export interface OiRow {
   oiChangePct: number | null;
   /** 24h change in notional, shown alongside so the two can be compared. */
   oiUsdChangePct: number | null;
+  /**
+   * Open interest on the Hyperliquid perp, in contracts.
+   *
+   * Null when the coin is not listed there. The board was Binance only while
+   * the funding column already carried both venues, which made open interest
+   * the one reading that quietly meant something narrower than the row it sat
+   * in. Contracts on both sides, so the two are directly comparable.
+   */
+  hlOi: number | null;
+  /** Change in Hyperliquid contract count over the last hourly bar. */
+  hlOiChangePct: number | null;
   priceChangePct: number | null;
   regime: Regime | null;
   /** 48 hourly open-interest values in USD, oldest first. */
@@ -177,6 +188,36 @@ export async function GET() {
   const fundingHist = await chunked(PERPS, 8, (a) => fundingHistory(a.perp!, 30, 600));
   const oiHist = await chunked(PERPS, 8, (a) => openInterestHist(a.perp!, "1h", 48, 300));
 
+  // Hyperliquid open interest, for the coins it actually lists.
+  //
+  // Budget: one request per coin. Held for 900s rather than the route's 180s,
+  // which is the lever that makes this affordable: the same coverage at the
+  // route's own cadence would cost five times as much for a number that moves
+  // on an hourly bar anyway. Capped at the assets already known to trade there,
+  // so a coin Hyperliquid does not list costs nothing to skip.
+  const HL_OI_TTL = 900;
+  const hlCoins = PERPS.filter((a) => hlNames(a.sym).some((n) => hlFunding.has(n))).slice(0, 12);
+  const hlOiRows = await chunked(hlCoins, 4, (a) =>
+    hyperliquidOi(hlNames(a.sym).find((n) => hlFunding.has(n))!, {
+      interval: "1h",
+      limit: 2,
+      revalidate: HL_OI_TTL,
+    })
+  );
+  const hlOiBySym = new Map<string, { oi: number; changePct: number | null }>();
+  hlCoins.forEach((a, i) => {
+    const rows = hlOiRows[i] as { open_interest: number }[] | null;
+    if (!rows || rows.length === 0) return;
+    const now = rows[0].open_interest;
+    const before = rows[1]?.open_interest;
+    if (!Number.isFinite(now)) return;
+    hlOiBySym.set(a.sym, {
+      oi: now,
+      changePct:
+        Number.isFinite(before) && (before as number) > 0 ? ((now - (before as number)) / (before as number)) * 100 : null,
+    });
+  });
+
   const funding: FundingRow[] = [];
   const oi: OiRow[] = [];
 
@@ -232,6 +273,7 @@ export async function GET() {
       const cPrev = contracts.length ? contracts[Math.max(0, contracts.length - 25)] : NaN;
       const oiChangePct = cPrev > 0 ? (cLast / cPrev - 1) * 100 : null;
 
+      const hl = hlOiBySym.get(a.sym) ?? null;
       oi.push({
         sym: a.sym,
         name: a.name,
@@ -239,6 +281,8 @@ export async function GET() {
         oiUsd: last,
         oiChangePct,
         oiUsdChangePct,
+        hlOi: hl?.oi ?? null,
+        hlOiChangePct: hl?.changePct ?? null,
         priceChangePct: Number.isFinite(priceChangePct as number) ? priceChangePct : null,
         regime: regimeOf(priceChangePct, oiChangePct),
         series,

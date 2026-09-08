@@ -174,23 +174,44 @@ export function useBinanceStream(pairs: string[]): StreamState {
       setConnected(false);
     }
 
-    function onVisibility() {
-      if (document.visibilityState === "hidden") {
-        // A backgrounded tab keeps a socket the OS may already have torn down,
-        // and the board is not being read anyway.
-        close();
-      } else if (!ws) {
+    function wake() {
+      // A socket object is not a working socket. A phone that suspends the page
+      // can have the connection torn down underneath without onclose ever
+      // running, so `ws` is still there and readyState says otherwise. Checking
+      // only for absence left the tape frozen on the last price it saw before
+      // the screen locked, still looking live.
+      if (ws && ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING) close();
+      if (!ws) {
         retry = 0;
         open();
       }
     }
 
+    function onVisibility() {
+      if (document.visibilityState === "hidden") {
+        // A backgrounded tab keeps a socket the OS may already have torn down,
+        // and the board is not being read anyway.
+        close();
+      } else {
+        wake();
+      }
+    }
+
+    // Coming back through the back gesture restores the page from memory with
+    // its sockets dead and does not reliably fire visibilitychange. pageshow is
+    // the event that always runs on that path.
+    function onPageShow(e: PageTransitionEvent) {
+      if (e.persisted) wake();
+    }
+
     document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pageshow", onPageShow);
     open();
 
     return () => {
       disposed = true;
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pageshow", onPageShow);
       window.clearInterval(commit);
       close();
     };

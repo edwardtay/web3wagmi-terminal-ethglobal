@@ -63,6 +63,7 @@ interface Store {
   idleTimer: ReturnType<typeof setTimeout> | null;
   flushTimer: ReturnType<typeof setInterval> | null;
   onVisibility: (() => void) | null;
+  onPageShow: ((e: PageTransitionEvent) => void) | null;
   pendingBook: Book | null;
   pendingPrints: Print[];
   lastPrintId: number;
@@ -86,6 +87,7 @@ function getStore(pair: string): Store {
       idleTimer: null,
       flushTimer: null,
       onVisibility: null,
+      onPageShow: null,
       pendingBook: null,
       pendingPrints: [],
       lastPrintId: 0,
@@ -255,11 +257,23 @@ function start(s: Store) {
       closeSocket(s);
     } else if (s.refs > 0) {
       s.attempts = 0;
+      // A socket object whose readyState says it is finished still counts as
+      // present to open(), so clear it first or the book never reconnects.
+      if (s.ws && s.ws.readyState !== WebSocket.OPEN && s.ws.readyState !== WebSocket.CONNECTING) {
+        closeSocket(s);
+      }
       open(s);
       void seed(s);
     }
   };
   document.addEventListener("visibilitychange", s.onVisibility);
+  // Restoring from the back/forward cache brings the page back with its sockets
+  // already dead and does not reliably fire visibilitychange, so the book would
+  // sit at whatever it held when the phone was locked, still looking live.
+  s.onPageShow = (e: PageTransitionEvent) => {
+    if (e.persisted && !document.hidden) s.onVisibility?.();
+  };
+  window.addEventListener("pageshow", s.onPageShow);
   void seed(s);
   open(s);
 }
@@ -273,6 +287,10 @@ function stop(s: Store) {
   if (s.onVisibility) {
     document.removeEventListener("visibilitychange", s.onVisibility);
     s.onVisibility = null;
+  }
+  if (s.onPageShow) {
+    window.removeEventListener("pageshow", s.onPageShow);
+    s.onPageShow = null;
   }
   s.attempts = 0;
   s.pendingBook = null;

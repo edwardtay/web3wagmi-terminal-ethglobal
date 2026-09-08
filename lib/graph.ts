@@ -413,6 +413,38 @@ export async function tokenInfo(
 
 // ---- Hyperliquid ---------------------------------------------------------
 
+/** One row of `GET /v1/hyperliquid/markets/oi`. */
+export interface HyperliquidOi {
+  timestamp: string;
+  coin: string;
+  /** Contracts, not notional. */
+  open_interest: number;
+  long_size: number;
+  short_size: number;
+}
+
+/**
+ * Open interest on the Hyperliquid perp, in contracts.
+ *
+ * The unit is the point. Regime direction has to come from contract count,
+ * because notional rises with price and a USD read labels every rally as new
+ * longs. Binance publishes both and this endpoint gives the one that is
+ * actually usable, so the two venues can be compared without converting.
+ *
+ * Newest first, so one hourly bar and the one before it is all a change needs.
+ */
+export function hyperliquidOi(
+  coin: string,
+  opts: GraphOptions & { interval?: string; limit?: number } = {}
+): Promise<HyperliquidOi[] | null> {
+  const { interval = "1h", limit = 2, ...rest } = opts;
+  return graphGet<HyperliquidOi>(
+    "/v1/hyperliquid/markets/oi",
+    { coin, dex: "perps", interval, limit },
+    rest
+  );
+}
+
 /** One row of `GET /v1/hyperliquid/markets/liquidations`. */
 export interface HlLiquidation {
   timestamp: string;

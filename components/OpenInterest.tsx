@@ -22,6 +22,8 @@ interface OiRow {
   oiChangePct: number | null;
   /** 24h change in notional, which moves with price as well as positioning. */
   oiUsdChangePct: number | null;
+  hlOi: number | null;
+  hlOiChangePct: number | null;
   priceChangePct: number | null;
   regime: Regime | null;
   series: number[];
@@ -111,7 +113,7 @@ export function OpenInterest() {
           <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
             <div className="min-w-0">
               <div className="font-mono text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--text3)]">
-                Universe OI (Binance USDT perps)
+                Universe OI (Binance USDT perps). Hyperliquid shown per row.
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <span className="whitespace-nowrap font-mono text-xl font-bold text-[var(--text)]">
@@ -164,6 +166,13 @@ export function OpenInterest() {
                   hint="The regime is the sign of this and contracts together, not either alone."
                 />
                 <Th
+                  label="HL 1h"
+                  num
+                  sortKey="hlOiChangePct"
+                  sort={sort}
+                  hint="Hyperliquid open interest, in contracts, over the last hourly bar. The onchain venue, so it can move against the centralised one. A dash means Hyperliquid does not list the coin, not that the reading is zero."
+                />
+                <Th
                   label="Regime"
                   sortKey="regime"
                   sort={sort}
@@ -195,6 +204,9 @@ export function OpenInterest() {
                   </td>
                   <td className="num" style={{ color: signColor(r.priceChangePct) }}>
                     {pct(r.priceChangePct, 1)}
+                  </td>
+                  <td className="num" style={{ color: signColor(r.hlOiChangePct) }}>
+                    {r.hlOi == null ? <span className="text-[var(--text3)]">not listed</span> : pct(r.hlOiChangePct, 1)}
                   </td>
                   <td>
                     <RegimeTag r={r.regime} />

@@ -292,26 +292,6 @@ function GlobalRow({ data }: { data: SnapshotPayload }) {
         )}
       </Panel>
 
-      <Panel title="ETH / BTC">
-        {g && g.ethBtc != null ? (
-          <>
-            <div className="flex flex-wrap items-baseline gap-2">
-              <span className="whitespace-nowrap font-mono text-xl font-bold text-[var(--text)]">
-                {g.ethBtc.toFixed(5)}
-              </span>
-              <ChangeChip value={g.ethBtcChg24} />
-            </div>
-            <div className="mt-2 [&>svg]:w-full">
-              <Sparkline data={g.ethBtcSpark} width={220} height={34} />
-            </div>
-            <div className="mt-1 font-mono text-[10px] uppercase tracking-wide text-[var(--text3)]">
-              72h hourly
-            </div>
-          </>
-        ) : (
-          <Unavailable what="The ETH/BTC ratio" />
-        )}
-      </Panel>
 
       <Panel
         title="Fear and Greed"

@@ -396,3 +396,51 @@ h3.panel-h {
 @media (prefers-reduced-motion: reduce) {
   .ask-bot-fab { animation: none; }
 }
+
+/* A strip that scrolls sideways without a bar under it. The mobile section
+   nav is chrome: a visible scrollbar there reads as a second piece of
+   furniture rather than as a hint, and the chips already overflow visibly
+   enough to say there is more. */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Pin the identity column when a table scrolls sideways.
+   A wide table on a phone scrolls the row away from its own subject: by the
+   time a number is on screen the ticker that owns it is not, and the reader is
+   counting rows to work out which asset they are looking at. The first column
+   is the one thing that must stay.
+   It needs its own background, or the scrolling cells show through it, and a
+   z-index above the body cells but below the sticky header, which already
+   occupies 1. The corner cell needs both stickies at once, so it takes the
+   higher layer. Skipped when the first column is numeric: a rank column is not
+   an identity and pinning two characters wastes the width. */
+.tbl td:first-child:not(.num),
+.tbl th:first-child:not(.num) {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--surface);
+}
+.tbl th:first-child:not(.num) {
+  z-index: 3;
+  background: var(--surface2);
+}
+.tbl tbody tr:hover td:first-child:not(.num) { background: var(--surface2); }
+/* The edge that says the column is pinned rather than merely first. Drawn with
+   a shadow so it costs no layout width and appears only where a real border
+   would be ambiguous against the row rule. */
+.tbl td:first-child:not(.num)::after,
+.tbl th:first-child:not(.num)::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+}

@@ -73,6 +73,31 @@ export const SECTION_GROUPS: { label: string; items: { id: string; label: string
 const IDS = SECTION_GROUPS.flatMap((g) => g.items.map((i) => i.id));
 
 export function SideNav() {
+  const active = useActiveSection();
+  return <DesktopRail active={active} />;
+}
+
+/** How much sticky furniture sits above the content, right now. */
+function chromeHeight(): number {
+  if (typeof document === "undefined") return 150;
+  const header = document.querySelector("header");
+  const bar = document.querySelector('nav[aria-label="Sections"]');
+  const bottom = header?.getBoundingClientRect().bottom ?? 0;
+  const barH = bar?.getBoundingClientRect().height ?? 0;
+  // A floor, because at a scroll position where the header has been pushed up
+  // the measurement understates what will cover the content once it settles.
+  return Math.max(150, Math.round(bottom + barH));
+}
+
+/**
+ * Which section is on screen.
+ *
+ * Extracted so the mobile bar and the desktop rail cannot disagree about it.
+ * They did not disagree before only because the mobile bar did not exist: the
+ * rail is xl and up, so a phone had no section tracking at all, which is the
+ * screen where losing your place in a page this long matters most.
+ */
+export function useActiveSection(): string {
   const [active, setActive] = useState<string>("snapshot");
 
   useEffect(() => {
@@ -94,8 +119,11 @@ export function SideNav() {
         if (best && bestRatio > 0) setActive(best);
       },
       // The top margin matches the stacked sticky chrome so a section counts as
-      // on screen only once it clears the header.
-      { rootMargin: "-150px 0px -40% 0px", threshold: [0, 0.1, 0.25, 0.5, 0.75, 1] }
+      // on screen only once it clears it. Measured rather than hardcoded: the
+      // chrome is a different height on a phone, which now carries a pinned
+      // section bar the desktop does not, and a fixed 150px there marked a
+      // section active while it was still behind the bar naming it.
+      { rootMargin: `-${chromeHeight()}px 0px -40% 0px`, threshold: [0, 0.1, 0.25, 0.5, 0.75, 1] }
     );
     for (const id of IDS) {
       const el = document.getElementById(id);
@@ -104,6 +132,10 @@ export function SideNav() {
     return () => io.disconnect();
   }, []);
 
+  return active;
+}
+
+function DesktopRail({ active }: { active: string }) {
   return (
     <nav
       aria-label="Terminal sections"
