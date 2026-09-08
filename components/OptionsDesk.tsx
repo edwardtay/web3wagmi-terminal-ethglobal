@@ -218,12 +218,53 @@ export function OptionsDesk() {
     ? undefined
     : `Focus is ${symbol}. Deribit lists options on BTC and ETH only, so this desk stays on ${ccy} rather than following it.`;
 
+  // Whether the reader chose this currency, or is only seeing it because the
+  // focused asset has no options at all.
+  //
+  // The hint above was the whole defence and it was not enough. Focused on XRP,
+  // the desk rendered ETH's max pain at $2,480 against spot $2,471.96 under a
+  // heading that named neither, directly below a header saying XRP. A reader
+  // scrolling into that sees an XRP max pain of two and a half thousand
+  // dollars, and every number under it is wrong by four orders of magnitude.
+  //
+  // A sentence at the top of a panel does not survive being scrolled past. So
+  // when the focus is not listed, the desk collapses to that statement and the
+  // reader opts in deliberately with the currency control, which stays.
+  const [optedIn, setOptedIn] = useState(false);
+  useEffect(() => {
+    // Choosing a new focus withdraws the opt-in: it was consent to see one
+    // asset's options, not standing permission to substitute any other.
+    setOptedIn(false);
+  }, [symbol]);
+  const substituting = !followsFocus && !optedIn;
+
   const right = (
     <>
       <Segmented options={CCY} value={ccy} onChange={setCcy} ariaLabel="Options currency" />
       <AsOf iso={data?.asOf} staleMs={15 * 60 * 1000} />
     </>
   );
+
+  if (substituting) {
+    return (
+      <Section title="Options Desk" id="options" right={right}>
+        <div className="card p-4">
+          <p className="text-[13px] leading-relaxed text-[var(--text2)]">
+            No options desk for <strong className="text-[var(--text)]">{symbol}</strong>. Deribit
+            lists options on BTC and ETH only, and the rest of this terminal covers {symbol}{" "}
+            normally.
+          </p>
+          <button
+            type="button"
+            onClick={() => setOptedIn(true)}
+            className="mt-3 rounded-lg border border-[var(--accent)] bg-[var(--accent-soft)] px-3 py-1.5 font-mono text-[11px] font-semibold text-[var(--accent)]"
+          >
+            Show the {ccy} desk instead
+          </button>
+        </div>
+      </Section>
+    );
+  }
 
   if (loading) {
     return (
@@ -428,7 +469,10 @@ export function OptionsDesk() {
         {desk.pain.map((p) => (
           <Panel
             key={p.code}
-            title={`Max pain · ${label(p.code)}`}
+            // The currency belongs in the heading. Cropped out of the desk, or
+            // scrolled to directly, this card carried an expiry and a price and
+            // nothing saying which asset either belonged to.
+            title={`Max pain · ${ccy} · ${label(p.code)}`}
             className="lg:col-span-1"
             right={
               <span className="whitespace-nowrap font-mono text-[11px] text-[var(--text3)]">

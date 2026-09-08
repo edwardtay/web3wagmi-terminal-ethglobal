@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useApi } from "@/lib/useApi";
+import { useNarrow } from "@/lib/useNarrow";
 import { AsOf, Loading, Panel, TableWrap, Unavailable, TokenIcon } from "@/components/ui";
 import { num, pct, pctPlain, NA } from "@/lib/format";
 import type { QuantPayload, QuantRow } from "@/app/api/quant/route";
@@ -25,9 +26,26 @@ type ColKey = (typeof COLS)[number]["key"];
 
 /* ---------------------------------------------------------------- scatter -- */
 
-const W = 720;
-const H = 430;
-const PAD = { l: 52, r: 18, t: 16, b: 44 };
+/**
+ * Two shapes for the same chart.
+ *
+ * The landscape one is the better chart and it does not fit a phone. Forcing it
+ * to 560px minimum put the plot behind a horizontal scrollbar, so the reader
+ * saw two thirds of a scatter and had to drag to find the rest, which defeats
+ * the only thing a scatter is for: seeing where everything sits at once.
+ *
+ * Scaling it down instead is worse. The viewBox is 720 wide, so on a 400px
+ * screen every label renders at a bit over half its size, and the axis numbers
+ * become unreadable rather than merely small.
+ *
+ * A portrait viewBox is the answer. It fits the width at roughly one to one,
+ * so the text renders at the size it was drawn, and the height it gains back is
+ * what keeps the points apart.
+ */
+type Dims = { W: number; H: number; PAD: { l: number; r: number; t: number; b: number } };
+
+const WIDE: Dims = { W: 720, H: 430, PAD: { l: 52, r: 18, t: 16, b: 44 } };
+const NARROW: Dims = { W: 360, H: 460, PAD: { l: 44, r: 14, t: 14, b: 40 } };
 
 interface Placed {
   x: number;
@@ -62,13 +80,13 @@ function domain(values: number[]): [number, number] {
   return [lo - padding, hi + padding];
 }
 
-function layout(rows: QuantRow[]): { placed: Placed[]; xd: [number, number]; yd: [number, number] } {
+function layout(rows: QuantRow[], D: Dims): { placed: Placed[]; xd: [number, number]; yd: [number, number] } {
   const xd = domain(rows.map((r) => r.vol90));
   const yd = domain(rows.map((r) => r.ret90Ann));
-  const px = (v: number) => PAD.l + ((v - xd[0]) / (xd[1] - xd[0])) * (W - PAD.l - PAD.r);
-  const py = (v: number) => H - PAD.b - ((v - yd[0]) / (yd[1] - yd[0])) * (H - PAD.t - PAD.b);
-  const clampX = (v: number) => Math.min(W - PAD.r - 2, Math.max(PAD.l + 2, v));
-  const clampY = (v: number) => Math.min(H - PAD.b - 2, Math.max(PAD.t + 2, v));
+  const px = (v: number) => D.PAD.l + ((v - xd[0]) / (xd[1] - xd[0])) * (D.W - D.PAD.l - D.PAD.r);
+  const py = (v: number) => D.H - D.PAD.b - ((v - yd[0]) / (yd[1] - yd[0])) * (D.H - D.PAD.t - D.PAD.b);
+  const clampX = (v: number) => Math.min(D.W - D.PAD.r - 2, Math.max(D.PAD.l + 2, v));
+  const clampY = (v: number) => Math.min(D.H - D.PAD.b - 2, Math.max(D.PAD.t + 2, v));
 
   const boxes: { x: number; y: number; w: number; h: number }[] = [];
   const hit = (x: number, y: number, w: number) =>
@@ -100,8 +118,8 @@ function layout(rows: QuantRow[]): { placed: Placed[]; xd: [number, number]; yd:
     let ly = candidates[0][1];
     let found = false;
     for (const [cx, cy] of candidates) {
-      const fx = Math.min(W - PAD.r - w, Math.max(PAD.l, cx));
-      const fy = Math.min(H - PAD.b - 2, Math.max(PAD.t + 8, cy));
+      const fx = Math.min(D.W - D.PAD.r - w, Math.max(D.PAD.l, cx));
+      const fy = Math.min(D.H - D.PAD.b - 2, Math.max(D.PAD.t + 8, cy));
       if (!hit(fx, fy - 8, w)) {
         lx = fx;
         ly = fy;
@@ -112,10 +130,10 @@ function layout(rows: QuantRow[]): { placed: Placed[]; xd: [number, number]; yd:
     if (!found) {
       // Walk downward until a gap opens rather than stacking labels on top.
       let fy = y + 3;
-      const fx = Math.min(W - PAD.r - w, Math.max(PAD.l, x + 7));
+      const fx = Math.min(D.W - D.PAD.r - w, Math.max(D.PAD.l, x + 7));
       for (let step = 0; step < 26 && hit(fx, fy - 8, w); step++) fy += 10;
       lx = fx;
-      ly = Math.min(H - PAD.b - 2, fy);
+      ly = Math.min(D.H - D.PAD.b - 2, fy);
     }
     boxes.push({ x: lx, y: ly - 8, w, h: 9 });
     placed.push({
@@ -139,31 +157,36 @@ function ticks(d: [number, number], count = 5): number[] {
 }
 
 function Scatter({ rows }: { rows: QuantRow[] }) {
-  const { placed, xd, yd } = useMemo(() => layout(rows), [rows]);
+  // Portrait below the point where the landscape chart stops fitting.
+  const narrow = useNarrow(640);
+  const D = narrow ? NARROW : WIDE;
+  const { placed, xd, yd } = useMemo(() => layout(rows, D), [rows, D]);
   const btc = rows.find((r) => r.sym === "BTC");
-  const px = (v: number) => PAD.l + ((v - xd[0]) / (xd[1] - xd[0])) * (W - PAD.l - PAD.r);
-  const py = (v: number) => H - PAD.b - ((v - yd[0]) / (yd[1] - yd[0])) * (H - PAD.t - PAD.b);
+  const px = (v: number) => D.PAD.l + ((v - xd[0]) / (xd[1] - xd[0])) * (D.W - D.PAD.l - D.PAD.r);
+  const py = (v: number) => D.H - D.PAD.b - ((v - yd[0]) / (yd[1] - yd[0])) * (D.H - D.PAD.t - D.PAD.b);
 
   return (
     <div className="thin-scroll -mx-1 overflow-x-auto px-1">
       <svg
-        viewBox={`0 0 ${W} ${H}`}
+        viewBox={`0 0 ${D.W} ${D.H}`}
         width="100%"
-        style={{ minWidth: 560, height: "auto" }}
+        // No minimum width in portrait: it already fits, and a floor
+        // would put the scrollbar back for nothing.
+        style={{ minWidth: narrow ? undefined : 560, height: "auto" }}
         role="img"
         aria-label="Risk and return scatter: annualised 90 day return against annualised 90 day volatility"
       >
         {ticks(yd).map((v, i) => (
           <g key={`y${i}`}>
             <line
-              x1={PAD.l}
-              x2={W - PAD.r}
+              x1={D.PAD.l}
+              x2={D.W - D.PAD.r}
               y1={py(v)}
               y2={py(v)}
               stroke="var(--border2)"
               strokeWidth="1"
             />
-            <text x={PAD.l - 6} y={py(v) + 3} textAnchor="end" fontSize="9" fill="var(--text3)" className="font-mono">
+            <text x={D.PAD.l - 6} y={py(v) + 3} textAnchor="end" fontSize="9" fill="var(--text3)" className="font-mono">
               {v.toFixed(0)}%
             </text>
           </g>
@@ -171,14 +194,14 @@ function Scatter({ rows }: { rows: QuantRow[] }) {
         {ticks(xd).map((v, i) => (
           <g key={`x${i}`}>
             <line
-              y1={PAD.t}
-              y2={H - PAD.b}
+              y1={D.PAD.t}
+              y2={D.H - D.PAD.b}
               x1={px(v)}
               x2={px(v)}
               stroke="var(--border2)"
               strokeWidth="1"
             />
-            <text x={px(v)} y={H - PAD.b + 14} textAnchor="middle" fontSize="9" fill="var(--text3)" className="font-mono">
+            <text x={px(v)} y={D.H - D.PAD.b + 14} textAnchor="middle" fontSize="9" fill="var(--text3)" className="font-mono">
               {v.toFixed(0)}%
             </text>
           </g>
@@ -189,8 +212,8 @@ function Scatter({ rows }: { rows: QuantRow[] }) {
           <line
             x1={px(btc.vol90)}
             x2={px(btc.vol90)}
-            y1={PAD.t}
-            y2={H - PAD.b}
+            y1={D.PAD.t}
+            y2={D.H - D.PAD.b}
             stroke="var(--accent)"
             strokeWidth="1"
             strokeDasharray="4 3"
@@ -201,8 +224,8 @@ function Scatter({ rows }: { rows: QuantRow[] }) {
           <line
             y1={py(btc.ret90Ann)}
             y2={py(btc.ret90Ann)}
-            x1={PAD.l}
-            x2={W - PAD.r}
+            x1={D.PAD.l}
+            x2={D.W - D.PAD.r}
             stroke="var(--accent)"
             strokeWidth="1"
             strokeDasharray="4 3"
@@ -211,8 +234,8 @@ function Scatter({ rows }: { rows: QuantRow[] }) {
         )}
         {btc && Number.isFinite(btc.vol90) && (
           <text
-            x={Math.min(W - PAD.r - 4, px(btc.vol90) + 4)}
-            y={PAD.t + 9}
+            x={Math.min(D.W - D.PAD.r - 4, px(btc.vol90) + 4)}
+            y={D.PAD.t + 9}
             fontSize="9"
             fill="var(--accent)"
             className="font-mono"
@@ -222,10 +245,10 @@ function Scatter({ rows }: { rows: QuantRow[] }) {
         )}
 
         <rect
-          x={PAD.l}
-          y={PAD.t}
-          width={W - PAD.l - PAD.r}
-          height={H - PAD.t - PAD.b}
+          x={D.PAD.l}
+          y={D.PAD.t}
+          width={D.W - D.PAD.l - D.PAD.r}
+          height={D.H - D.PAD.t - D.PAD.b}
           fill="none"
           stroke="var(--border)"
         />
@@ -252,11 +275,11 @@ function Scatter({ rows }: { rows: QuantRow[] }) {
           </g>
         ))}
 
-        <text x={(W + PAD.l) / 2} y={H - 6} textAnchor="middle" fontSize="9" fill="var(--text3)" className="font-mono">
+        <text x={(D.W + D.PAD.l) / 2} y={D.H - 6} textAnchor="middle" fontSize="9" fill="var(--text3)" className="font-mono">
           annualised 90d volatility
         </text>
         <text
-          x={-(H - PAD.b + PAD.t) / 2}
+          x={-(D.H - D.PAD.b + D.PAD.t) / 2}
           y={12}
           transform="rotate(-90)"
           textAnchor="middle"
@@ -360,15 +383,13 @@ export function RiskMatrix() {
             </tbody>
           </TableWrap>
         </div>
-        <div className="mt-2 font-mono text-[10px] text-[var(--text3)]">
-          {rows.length} assets · daily closes, Binance spot · vol and drawdown in percent, risk-free rate zero
-        </div>
       </>
     );
 
   return (
     <Panel
       title="Risk matrix"
+      hint="Daily closes from Binance spot. Volatility and drawdown are percent, annualised by sqrt(365) because crypto trades every day, and Sharpe takes the risk-free rate as zero."
       right={
         <div className="flex items-center gap-2">
           <AsOf iso={data?.asOf} staleMs={30 * 60 * 1000} />

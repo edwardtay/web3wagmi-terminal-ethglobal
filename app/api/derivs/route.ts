@@ -1,5 +1,6 @@
 import { getJson, postJson, jsonResponse } from "@/lib/http";
 import { hyperliquidLiquidations, hyperliquidOi } from "@/lib/graph";
+import { venueOpenInterest } from "@/lib/perps";
 import {
   FAPI,
   allPremiumIndex,
@@ -101,6 +102,13 @@ export interface OiRow {
    * in. Contracts on both sides, so the two are directly comparable.
    */
   hlOi: number | null;
+  /**
+   * Notional by venue, largest first. Dollars because a contract is a different
+   * size on each venue and the small caps carry a 1000x wrapper on some of
+   * them, so counts cannot be summed across venues without a conversion table
+   * that would be wrong within a week.
+   */
+  venues: { venue: string; usd: number }[];
   /** Change in Hyperliquid contract count over the last hourly bar. */
   hlOiChangePct: number | null;
   priceChangePct: number | null;
@@ -218,6 +226,10 @@ export async function GET() {
     });
   });
 
+  // Two calls for every instrument each venue lists, so a wider board costs the
+  // same as a narrow one.
+  const venueOi = await venueOpenInterest(revalidate).catch(() => new Map());
+
   const funding: FundingRow[] = [];
   const oi: OiRow[] = [];
 
@@ -283,6 +295,16 @@ export async function GET() {
         oiUsdChangePct,
         hlOi: hl?.oi ?? null,
         hlOiChangePct: hl?.changePct ?? null,
+        venues: (() => {
+          const list = [{ venue: "Binance", usd: last }, ...(venueOi.get(a.sym) ?? [])];
+          // Hyperliquid publishes contracts, so it joins the dollar comparison
+          // only when there is a price to turn them into dollars with.
+          const mark = Number(p.markPrice);
+          if (hl?.oi != null && Number.isFinite(mark) && mark > 0) {
+            list.push({ venue: "Hyperliquid", usd: hl.oi * mark });
+          }
+          return list.filter((v) => Number.isFinite(v.usd) && v.usd > 0).sort((x, y) => y.usd - x.usd);
+        })(),
         priceChangePct: Number.isFinite(priceChangePct as number) ? priceChangePct : null,
         regime: regimeOf(priceChangePct, oiChangePct),
         series,

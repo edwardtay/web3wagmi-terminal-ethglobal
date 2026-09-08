@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect, useRef } from "react";
+
 import { ThemeToggle } from "./ThemeToggle";
 import { Alerts } from "./Alerts";
-import { SECTION_GROUPS } from "./SideNav";
+import { SECTION_GROUPS, useActiveSection } from "./SideNav";
 import { SymbolPicker } from "./SymbolPicker";
 
 // The terminal's own bar, below the two shared web3wagmi strips (44px each),
@@ -11,6 +13,21 @@ import { SymbolPicker } from "./SymbolPicker";
 
 
 export function TerminalHeader() {
+  const active = useActiveSection();
+  const stripRef = useRef<HTMLElement>(null);
+  const activeChipRef = useRef<HTMLAnchorElement>(null);
+
+  // Keep the marked chip in view, scrolling the strip and never the page. The
+  // reader is already scrolling the page; taking that away from them to show a
+  // chip would be the navigation fighting the thing it is describing.
+  useEffect(() => {
+    const chip = activeChipRef.current;
+    const strip = stripRef.current;
+    if (!chip || !strip) return;
+    const left = chip.offsetLeft - strip.clientWidth / 2 + chip.clientWidth / 2;
+    strip.scrollTo({ left: Math.max(0, left), behavior: "smooth" });
+  }, [active]);
+
   return (
     <header className="sticky top-[88px] z-40 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] backdrop-blur-md">
       <div className="shell flex items-center gap-3 py-2">
@@ -65,20 +82,33 @@ export function TerminalHeader() {
 
       {/* Section strip. The left rail only exists from xl up, so below that this
           is the only way to move between thirty panels without scrolling past
-          all of them. Scrolls horizontally rather than wrapping to three rows. */}
+          all of them. Scrolls horizontally rather than wrapping to three rows.
+          It marks where the reader is, which it did not before: a strip of
+          links tells you where you can go, and the highlight is the half that
+          says where you already are. */}
       <nav
+        ref={stripRef}
         className="thin-scroll flex items-center gap-1 overflow-x-auto border-t border-[var(--border2)] px-4 py-1.5 xl:hidden"
         aria-label="Sections"
       >
-        {SECTION_GROUPS.flatMap((g) => g.items).map((i) => (
-          <a
-            key={i.id}
-            href={`#${i.id}`}
-            className="shrink-0 whitespace-nowrap rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-[var(--text3)] hover:border-[var(--accent)] hover:text-[var(--text)]"
-          >
-            {i.label}
-          </a>
-        ))}
+        {SECTION_GROUPS.flatMap((g) => g.items).map((i) => {
+          const on = active === i.id;
+          return (
+            <a
+              key={i.id}
+              ref={on ? activeChipRef : undefined}
+              href={`#${i.id}`}
+              aria-current={on ? "true" : undefined}
+              className={`shrink-0 whitespace-nowrap rounded-md border px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide ${
+                on
+                  ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]"
+                  : "border-[var(--border)] bg-[var(--surface)] text-[var(--text3)] hover:border-[var(--accent)] hover:text-[var(--text)]"
+              }`}
+            >
+              {i.label}
+            </a>
+          );
+        })}
       </nav>
     </header>
   );

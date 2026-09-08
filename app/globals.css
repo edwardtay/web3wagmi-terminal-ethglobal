@@ -38,6 +38,16 @@
   --btc: #f7931a;
   --eth: #627eea;
   --violet: #a78bfa;
+  /* Venue hues for the open interest split.
+     Their own tokens rather than the semantic ones: green already means "up"
+     everywhere else on this page, so a venue coloured with it reads as a
+     direction. They also have to differ from each other, which --gold and
+     --accent do not: both are #fbbf24, so Binance and Bybit drew the same
+     colour and the bar looked like one segment. */
+  --venue-1: #fbbf24;
+  --venue-2: #60a5fa;
+  --venue-3: #94a3b8;
+  --venue-4: #2dd4bf;
   --cyan: #38bdf8;
 
   --pos: #34d399;
@@ -46,6 +56,10 @@
   --neg-soft: rgba(251, 113, 133, 0.14);
   --green: var(--pos);
   --red: var(--neg);
+  --venue-1: #b45309;
+  --venue-2: #2563eb;
+  --venue-3: #64748b;
+  --venue-4: #0d9488;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 6px 18px -6px rgba(0, 0, 0, 0.65);

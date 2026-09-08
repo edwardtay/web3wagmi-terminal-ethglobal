@@ -247,16 +247,16 @@ export function TokenIcon({ sym, size = 16 }: { sym: string; size?: number }) {
     // request through a resizing endpoint.
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={`/icons/tokens/${key.toLowerCase()}.svg?v=${TOKEN_ICON_VERSION}`}
+      src={`/icons/tokens/${key.toLowerCase()}.png?v=${TOKEN_ICON_VERSION}`}
       alt=""
       aria-hidden
       loading="lazy"
       decoding="async"
-      /* A hairline edge. Each icon now carries its own ground, and some of
-         those grounds are white or near-white, so on a light page the icon
-         would otherwise have no boundary and a pale brand colour like DOGE's
-         gold would read as a smudge. */
-      className="shrink-0 rounded-[5px] ring-1 ring-[var(--border)]"
+      /* Round, because these are the projects' own round marks on a
+         transparent ground rather than square tiles. No ring: a hairline drawn
+         around a circular logo that already ends in whitespace reads as a
+         second, slightly wrong edge. */
+      className="shrink-0 rounded-full"
       style={box}
     />
   );

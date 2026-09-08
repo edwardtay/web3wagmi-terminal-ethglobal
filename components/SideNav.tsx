@@ -49,7 +49,6 @@ export const SECTION_GROUPS: { label: string; items: { id: string; label: string
     items: [
       { id: "netflow", label: "Exchange flow" },
       { id: "dex", label: "DEX pools" },
-      { id: "standards", label: "One query, many" },
       { id: "chains", label: "Chains" },
       { id: "protocols", label: "Protocols" },
       { id: "stablecoins", label: "Stablecoins" },
@@ -81,13 +80,14 @@ export function SideNav() {
 /** How much sticky furniture sits above the content, right now. */
 function chromeHeight(): number {
   if (typeof document === "undefined") return 150;
+  // The section strip lives inside the header, so the header's own bottom edge
+  // already accounts for it. Measuring both and adding them, as an earlier
+  // version did, pushed the boundary a strip's height too far down the page.
   const header = document.querySelector("header");
-  const bar = document.querySelector('nav[aria-label="Sections"]');
   const bottom = header?.getBoundingClientRect().bottom ?? 0;
-  const barH = bar?.getBoundingClientRect().height ?? 0;
   // A floor, because at a scroll position where the header has been pushed up
   // the measurement understates what will cover the content once it settles.
-  return Math.max(150, Math.round(bottom + barH));
+  return Math.max(150, Math.round(bottom));
 }
 
 /**

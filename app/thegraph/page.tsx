@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Section, Panel } from "@/components/ui";
 import { PageChrome } from "@/components/PageChrome";
 import { GraphCase } from "@/components/GraphCase";
+import { Standards } from "@/components/Standards";
 
 // The entry point for someone who wants to see what The Graph runs here.
 //
@@ -47,6 +48,15 @@ export default function TheGraphPage() {
         <Section title="The desks it runs" id="graph">
           <GraphCase />
         </Section>
+
+        {/* The standardized schema read lives here rather than on the terminal.
+            It is a demonstration of a technique, not a reading of the market:
+            protocol-wide totals on a daily snapshot answer "what does a shared
+            schema buy" and answer nothing a trader is looking at the terminal
+            to find out. On the board it was a panel nobody could act on. */}
+        <div className="mt-4">
+          <Standards />
+        </div>
 
         <div className="mt-4">
           <Section title="How it works" id="how">

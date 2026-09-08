@@ -1,7 +1,6 @@
 import { CommandPalette } from "@/components/CommandPalette";
 import { TerminalHeader } from "@/components/TerminalHeader";
 import { SideNav } from "@/components/SideNav";
-import { SectionBar } from "@/components/SectionBar";
 import { SymbolProvider } from "@/components/SymbolProvider";
 import { Section } from "@/components/ui";
 import { Defer } from "@/components/Defer";
@@ -20,7 +19,6 @@ import { OptionsDesk } from "@/components/OptionsDesk";
 import { Microstructure } from "@/components/Microstructure";
 import { ExchangeNetflow } from "@/components/ExchangeNetflow";
 import { DexPools } from "@/components/DexPools";
-import { Standards } from "@/components/Standards";
 import { ChainBoard } from "@/components/ChainBoard";
 import { ProtocolMovers } from "@/components/ProtocolMovers";
 import { Stablecoins } from "@/components/Stablecoins";
@@ -60,8 +58,6 @@ export default async function Home({
       <CommandPalette />
       <TerminalHeader />
       <Tape />
-      {/* Section tracking for the screens the side rail does not reach. */}
-      <SectionBar />
 
       <div className="shell flex gap-6 py-6">
         <SideNav />
@@ -136,10 +132,6 @@ export default async function Home({
           <DexPools />
 
           <ChainBoard />
-
-          {/* The standardized schema read, next to the bespoke ones so the
-              difference between them is visible rather than asserted. */}
-          <Standards />
 
           <Section
             title="Protocols"

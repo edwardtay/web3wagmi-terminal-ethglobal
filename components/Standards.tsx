@@ -106,7 +106,7 @@ export function Standards() {
         {data.bespoke?.error && (
           <p className="mt-3 break-words rounded-lg border border-[var(--border)] bg-[var(--bg2)] p-2.5 text-[11px] leading-relaxed text-[var(--text2)]">
             The same query, sent to {data.bespoke.label}, which does not share the schema:{" "}
-            <span className="font-mono text-[var(--down)]">{data.bespoke.error}</span> That is the
+            <span className="font-mono text-[var(--neg)]">{data.bespoke.error}</span> That is the
             cost of a bespoke schema, stated by the gateway rather than by us.
           </p>
         )}

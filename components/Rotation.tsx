@@ -3,6 +3,7 @@
 import { BarCell, Loading, Panel, TableWrap, Unavailable } from "@/components/ui";
 import { pct, signColor } from "@/lib/format";
 import { useApi } from "@/lib/useApi";
+import { useNarrow } from "@/lib/useNarrow";
 
 // Sector rotation over the tracked universe. Two views of the same numbers:
 // a ranked median-return table, and a relative-strength quadrant that shows
@@ -31,7 +32,6 @@ interface RotationPayload {
 }
 
 
-
 /**
  * Seven distinguishable theme tokens for eight sectors, so one colour repeats.
  * Every dot carries its own label, which is what actually identifies it.
@@ -56,11 +56,22 @@ function quadrant(x: number, y: number): string {
   return y >= 0 ? "improving" : "lagging";
 }
 
-const W = 540;
-const H = 400;
-const PAD = { l: 46, r: 18, t: 18, b: 36 };
+/**
+ * Two shapes, for the same reason the risk scatter has two.
+ *
+ * This one was rendered at a fixed 540px inside a fixed width wrapper, so a
+ * phone got a horizontal scrollbar under a quadrant chart. A quadrant chart is
+ * read by where things sit relative to the crossing lines, which means seeing
+ * all four quadrants at once, which is exactly what scrolling takes away.
+ */
+type Dims = { W: number; H: number; PAD: { l: number; r: number; t: number; b: number } };
+
+const WIDE: Dims = { W: 540, H: 400, PAD: { l: 46, r: 18, t: 18, b: 36 } };
+const NARROW: Dims = { W: 340, H: 340, PAD: { l: 40, r: 12, t: 14, b: 34 } };
 
 function Quadrant({ rows }: { rows: SectorRow[] }) {
+  // Square and smaller on a phone, wide on a desk.
+  const D = useNarrow(640) ? NARROW : WIDE;
   const plotted = rows.filter((r) => r.x != null && r.y != null);
   if (!plotted.length) return <Unavailable what="The rotation quadrant" />;
 
@@ -69,33 +80,32 @@ function Quadrant({ rows }: { rows: SectorRow[] }) {
   // four quadrants readable at a glance. Floor of 5pp stops a quiet tape from
   // magnifying noise into apparent rotation.
   const m = Math.max(5, Math.ceil(Math.max(...all.map((p) => Math.max(Math.abs(p.x), Math.abs(p.y)))) * 1.15));
-  const pw = W - PAD.l - PAD.r;
-  const ph = H - PAD.t - PAD.b;
-  const sx = (v: number) => PAD.l + ((v + m) / (2 * m)) * pw;
-  const sy = (v: number) => PAD.t + ((m - v) / (2 * m)) * ph;
+  const pw = D.W - D.PAD.l - D.PAD.r;
+  const ph = D.H - D.PAD.t - D.PAD.b;
+  const sx = (v: number) => D.PAD.l + ((v + m) / (2 * m)) * pw;
+  const sy = (v: number) => D.PAD.t + ((m - v) / (2 * m)) * ph;
   const cx = sx(0);
   const cy = sy(0);
   const ticks = [-m, -m / 2, 0, m / 2, m];
 
   const quads: { label: string; x: number; y: number; fill: string; anchor: "start" | "end" }[] = [
-    { label: "LEADING", x: W - PAD.r - 6, y: PAD.t + 14, fill: "var(--pos)", anchor: "end" },
-    { label: "WEAKENING", x: W - PAD.r - 6, y: H - PAD.b - 6, fill: "var(--gold)", anchor: "end" },
-    { label: "LAGGING", x: PAD.l + 6, y: H - PAD.b - 6, fill: "var(--neg)", anchor: "start" },
-    { label: "IMPROVING", x: PAD.l + 6, y: PAD.t + 14, fill: "var(--cyan)", anchor: "start" },
+    { label: "LEADING", x: D.W - D.PAD.r - 6, y: D.PAD.t + 14, fill: "var(--pos)", anchor: "end" },
+    { label: "WEAKENING", x: D.W - D.PAD.r - 6, y: D.H - D.PAD.b - 6, fill: "var(--gold)", anchor: "end" },
+    { label: "LAGGING", x: D.PAD.l + 6, y: D.H - D.PAD.b - 6, fill: "var(--neg)", anchor: "start" },
+    { label: "IMPROVING", x: D.PAD.l + 6, y: D.PAD.t + 14, fill: "var(--cyan)", anchor: "start" },
   ];
 
   return (
     <svg
-      viewBox={`0 0 ${W} ${H}`}
-      width={W}
-      height={H}
+      viewBox={`0 0 ${D.W} ${D.H}`}
+      width="100%"
       role="img"
       aria-label="Sector relative strength versus BTC over 30 days, plotted against its 7 day change"
-      style={{ maxWidth: "none" }}
+      style={{ height: "auto", maxWidth: "100%" }}
     >
       <rect
-        x={PAD.l}
-        y={PAD.t}
+        x={D.PAD.l}
+        y={D.PAD.t}
         width={pw}
         height={ph}
         fill="var(--bg2)"
@@ -103,23 +113,23 @@ function Quadrant({ rows }: { rows: SectorRow[] }) {
         rx={8}
       />
       {/* Quadrant washes, faint enough that the dots stay the loudest thing. */}
-      <rect x={cx} y={PAD.t} width={W - PAD.r - cx} height={cy - PAD.t} fill="var(--pos)" opacity={0.06} />
-      <rect x={cx} y={cy} width={W - PAD.r - cx} height={H - PAD.b - cy} fill="var(--gold)" opacity={0.06} />
-      <rect x={PAD.l} y={cy} width={cx - PAD.l} height={H - PAD.b - cy} fill="var(--neg)" opacity={0.06} />
-      <rect x={PAD.l} y={PAD.t} width={cx - PAD.l} height={cy - PAD.t} fill="var(--cyan)" opacity={0.06} />
+      <rect x={cx} y={D.PAD.t} width={D.W - D.PAD.r - cx} height={cy - D.PAD.t} fill="var(--pos)" opacity={0.06} />
+      <rect x={cx} y={cy} width={D.W - D.PAD.r - cx} height={D.H - D.PAD.b - cy} fill="var(--gold)" opacity={0.06} />
+      <rect x={D.PAD.l} y={cy} width={cx - D.PAD.l} height={D.H - D.PAD.b - cy} fill="var(--neg)" opacity={0.06} />
+      <rect x={D.PAD.l} y={D.PAD.t} width={cx - D.PAD.l} height={cy - D.PAD.t} fill="var(--cyan)" opacity={0.06} />
 
       {ticks.map((t) => (
         <g key={`gx${t}`}>
-          <line x1={sx(t)} y1={PAD.t} x2={sx(t)} y2={H - PAD.b} stroke="var(--border)" strokeWidth={t === 0 ? 1.4 : 0.6} />
-          <text x={sx(t)} y={H - PAD.b + 14} textAnchor="middle" fontSize={9} fill="var(--text3)" fontFamily="monospace">
+          <line x1={sx(t)} y1={D.PAD.t} x2={sx(t)} y2={D.H - D.PAD.b} stroke="var(--border)" strokeWidth={t === 0 ? 1.4 : 0.6} />
+          <text x={sx(t)} y={D.H - D.PAD.b + 14} textAnchor="middle" fontSize={9} fill="var(--text3)" fontFamily="monospace">
             {t > 0 ? `+${t.toFixed(0)}` : t.toFixed(0)}
           </text>
         </g>
       ))}
       {ticks.map((t) => (
         <g key={`gy${t}`}>
-          <line x1={PAD.l} y1={sy(t)} x2={W - PAD.r} y2={sy(t)} stroke="var(--border)" strokeWidth={t === 0 ? 1.4 : 0.6} />
-          <text x={PAD.l - 6} y={sy(t) + 3} textAnchor="end" fontSize={9} fill="var(--text3)" fontFamily="monospace">
+          <line x1={D.PAD.l} y1={sy(t)} x2={D.W - D.PAD.r} y2={sy(t)} stroke="var(--border)" strokeWidth={t === 0 ? 1.4 : 0.6} />
+          <text x={D.PAD.l - 6} y={sy(t) + 3} textAnchor="end" fontSize={9} fill="var(--text3)" fontFamily="monospace">
             {t > 0 ? `+${t.toFixed(0)}` : t.toFixed(0)}
           </text>
         </g>
@@ -149,7 +159,7 @@ function Quadrant({ rows }: { rows: SectorRow[] }) {
         const hx = sx(r.x as number);
         const hy = sy(r.y as number);
         // Nudge the label inside the frame when a sector sits near the right edge.
-        const flip = hx > W - PAD.r - 62;
+        const flip = hx > D.W - D.PAD.r - 62;
         return (
           <g key={r.sector}>
             {pts.length > 1 && (
@@ -174,17 +184,17 @@ function Quadrant({ rows }: { rows: SectorRow[] }) {
         );
       })}
 
-      <text x={W / 2} y={H - 3} textAnchor="middle" fontSize={9} fill="var(--text3)" fontFamily="monospace">
+      <text x={D.W / 2} y={D.H - 3} textAnchor="middle" fontSize={9} fill="var(--text3)" fontFamily="monospace">
         median 30d return vs BTC (pp)
       </text>
       <text
         x={12}
-        y={H / 2}
+        y={D.H / 2}
         textAnchor="middle"
         fontSize={9}
         fill="var(--text3)"
         fontFamily="monospace"
-        transform={`rotate(-90 12 ${H / 2})`}
+        transform={`rotate(-90 12 ${D.H / 2})`}
       >
         7d change in that gap (pp)
       </text>
@@ -259,10 +269,10 @@ export function Rotation() {
       </Panel>
 
       <Panel title="Relative rotation vs BTC">
-        <div className="thin-scroll -mx-1 overflow-x-auto px-1">
-          <div style={{ width: W }}>
-            <Quadrant rows={rows} />
-          </div>
+        {/* No fixed width and no scroller. The chart picks a shape that fits,
+            so there is nothing left to scroll to. */}
+        <div className="-mx-1 px-1">
+          <Quadrant rows={rows} />
         </div>
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
           {rows

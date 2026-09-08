@@ -79,6 +79,7 @@ export function ReturnsMatrix() {
   return (
     <Panel
       title="Returns matrix"
+      hint="Daily closes from Binance spot, over the tracked universe."
       right={<AsOf iso={data?.asOf} staleMs={30 * 60 * 1000} />}
     >
       {loading ? (
@@ -169,7 +170,6 @@ export function ReturnsMatrix() {
               />
               worst in column
             </span>
-            <span>{rows.length} assets · daily closes, Binance spot</span>
           </div>
         </>
       )}

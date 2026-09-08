@@ -24,6 +24,7 @@ interface OiRow {
   oiUsdChangePct: number | null;
   hlOi: number | null;
   hlOiChangePct: number | null;
+  venues: { venue: string; usd: number }[];
   priceChangePct: number | null;
   regime: Regime | null;
   series: number[];
@@ -88,6 +89,44 @@ function SplitBar({ label, long, short, ratio }: { label: string; long: number; 
   );
 }
 
+/**
+ * A venue's colour, fixed across every row so the bars can be read down the
+ * column rather than one at a time.
+ */
+const VENUE_COLOR: Record<string, string> = {
+  Binance: "var(--venue-1)",
+  Bybit: "var(--venue-2)",
+  OKX: "var(--venue-3)",
+  Hyperliquid: "var(--venue-4)",
+};
+
+/**
+ * Where the open interest actually sits, as one bar.
+ *
+ * A column per venue was the obvious move and the wrong one: it makes the
+ * table wider on the screen that can least afford it, and a reader comparing
+ * four numbers across four columns is doing the arithmetic the panel should
+ * have done. The question is which venue carries the risk, and a share bar
+ * answers it without being read.
+ */
+function VenueBar({ venues }: { venues: { venue: string; usd: number }[] }) {
+  const total = venues.reduce((a, v) => a + v.usd, 0);
+  if (!total) return <span className="text-[var(--text3)]">n/a</span>;
+  return (
+    <span
+      className="flex h-2.5 w-full min-w-[70px] overflow-hidden rounded-sm"
+      title={venues.map((v) => `${v.venue} ${usdCompact(v.usd, 1)} (${((v.usd / total) * 100).toFixed(0)}%)`).join(" · ")}
+    >
+      {venues.map((v) => (
+        <span
+          key={v.venue}
+          style={{ width: `${(v.usd / total) * 100}%`, background: VENUE_COLOR[v.venue] ?? "var(--border)" }}
+        />
+      ))}
+    </span>
+  );
+}
+
 export function OpenInterest() {
   // The focused instrument reads as a marked row here rather than filtering the
   // table, since the ranking against everything else is the point of the panel.
@@ -113,7 +152,7 @@ export function OpenInterest() {
           <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
             <div className="min-w-0">
               <div className="font-mono text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--text3)]">
-                Universe OI (Binance USDT perps). Hyperliquid shown per row.
+                Universe OI (Binance USDT perps)
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <span className="whitespace-nowrap font-mono text-xl font-bold text-[var(--text)]">
@@ -121,6 +160,17 @@ export function OpenInterest() {
                 </span>
                 <ChangeChip value={data?.totalOiChangePct ?? null} />
                 <span className="text-[11px] text-[var(--text3)]">24h</span>
+              </div>
+              {/* The bar is unreadable without this, and a colour named once at
+                  the top beats a tooltip repeated on every row. */}
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] text-[var(--text3)]">
+                <span>across venues</span>
+                {Object.entries(VENUE_COLOR).map(([venue, color]) => (
+                  <span key={venue} className="inline-flex items-center gap-1">
+                    <span className="inline-block h-2 w-2 rounded-sm" style={{ background: color }} />
+                    {venue}
+                  </span>
+                ))}
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--text3)]">
@@ -142,7 +192,11 @@ export function OpenInterest() {
                   num
                   sortKey="oiUsd"
                   sort={sort}
-                  hint="Size, not direction. It says what is at stake if it unwinds, not which way."
+                  hint="Binance notional. Size, not direction: it says what is at stake if it unwinds, not which way."
+                />
+                <Th
+                  label="Across venues"
+                  hint="Share of notional by venue, largest first: Binance, Bybit, OKX and Hyperliquid. Dollars rather than contracts, because a contract is a different size on each venue and the small caps carry a 1000x wrapper on some of them, so counts cannot be added across venues. Hover for the split."
                 />
                 <Th
                   label="OI 24h, contracts"
@@ -196,6 +250,9 @@ export function OpenInterest() {
                     <div className="break-words text-[10px] text-[var(--text3)]">{r.name}</div>
                   </td>
                   <td className="num font-semibold text-[var(--text)]">{usdCompact(r.oiUsd, 2)}</td>
+                  <td className="min-w-[90px]">
+                    <VenueBar venues={r.venues ?? []} />
+                  </td>
                   <td className="num font-semibold" style={{ color: signColor(r.oiChangePct) }}>
                     {pct(r.oiChangePct, 1)}
                   </td>

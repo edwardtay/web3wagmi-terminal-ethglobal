@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useApi } from "@/lib/useApi";
+import { Composites } from "./Composites";
 import { AsOf, ChangeChip, Loading, LivePill, Meter, Panel, Section, Sparkline, Unavailable } from "@/components/ui";
-import { pct, pctPlain, price, signColor, usd, usdCompact } from "@/lib/format";
-import type { SnapTile, SnapshotPayload } from "@/app/api/snapshot/route";
+import { pct, pctPlain, price, signColor, usdCompact } from "@/lib/format";
+import type { SnapshotPayload } from "@/app/api/snapshot/route";
 
 const API = "/api/snapshot";
 const POLL = 30;
@@ -17,7 +18,6 @@ function fngZone(v: number): { label: string; color: string } {
   if (v <= 74) return { label: "Greed", color: "var(--pos)" };
   return { label: "Extreme greed", color: "var(--pos)" };
 }
-
 
 
 
@@ -148,44 +148,18 @@ export function Snapshot() {
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            {data.headline.map((t) => (
-              <AssetTile key={t.sym} t={t} />
-            ))}
-          </div>
+          {/* Composites rather than six price tiles.
+              Six of twenty seven tracked assets is an arbitrary sample that
+              answers nothing about the other twenty one, and a reader who
+              wants the BTC price has it in the tape above, on the focus strip,
+              and on every other site they have open. What none of those give
+              is whether this move is broad, whether the market is paying for
+              risk beyond the majors, and how much leverage is behind it. */}
+          <Composites />
           <GlobalRow data={data} />
         </div>
       )}
     </Section>
-  );
-}
-
-function AssetTile({ t }: { t: SnapTile }) {
-  const up = t.chg24 >= 0;
-  return (
-    <Link href={`/s/${t.sym}`} className="card block min-w-0 p-3 no-underline">
-      <div className="flex min-w-0 items-start justify-between gap-1.5">
-        <div className="min-w-0">
-          <div className="font-display text-sm font-bold leading-tight text-[var(--text)] break-words">{t.sym}</div>
-          <div className="text-[10px] leading-tight text-[var(--text3)] break-words">{t.name}</div>
-        </div>
-        <ChangeChip value={t.chg24} />
-      </div>
-
-      <div className="mt-2 whitespace-nowrap font-mono text-[15px] font-semibold text-[var(--text)]">{usd(t.last)}</div>
-
-      <div className="mt-2 [&>svg]:w-full">
-        <Sparkline data={t.spark} up={up} width={160} height={32} />
-      </div>
-      <div className="mt-0.5 text-[9px] uppercase tracking-wider text-[var(--text3)]">72h hourly</div>
-
-      <RangeBar low={t.low24} high={t.high24} pos={t.rangePos} />
-
-      <div className="mt-2 flex items-baseline justify-between gap-2 font-mono text-[10px] text-[var(--text3)]">
-        <span>24h vol</span>
-        <span className="whitespace-nowrap text-[var(--text2)]">{usdCompact(t.quoteVol)}</span>
-      </div>
-    </Link>
   );
 }
 
@@ -291,7 +265,6 @@ function GlobalRow({ data }: { data: SnapshotPayload }) {
           <Unavailable what="Dominance" />
         )}
       </Panel>
-
 
       <Panel
         title="Fear and Greed"

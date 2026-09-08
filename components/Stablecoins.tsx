@@ -186,8 +186,23 @@ export function Stablecoins() {
     return [...moved].sort((a, b) => (b[key] as number) - (a[key] as number));
   }, [rows, win]);
 
+  // Ranked by distance from the peg, with the tokens that are meant to be off
+  // it kept underneath.
+  //
+  // A tokenised treasury accrues interest into its price, so USDY and USYC sit
+  // fourteen percent above a dollar by design and permanently. Ranking on
+  // distance alone put both at the top of a panel whose entire job is spotting
+  // the ones that should not be there, and pushed a real depeg below the fold.
+  // They stay in the table, labelled, because their supply and share are worth
+  // reading; they just cannot be allowed to lead it.
   const pegs = useMemo(
-    () => rows.filter((r) => r.devBps != null).sort((a, b) => Math.abs(b.devBps as number) - Math.abs(a.devBps as number)),
+    () =>
+      rows
+        .filter((r) => r.devBps != null)
+        .sort((a, b) => {
+          if (a.yieldBearing !== b.yieldBearing) return a.yieldBearing ? 1 : -1;
+          return Math.abs(b.devBps as number) - Math.abs(a.devBps as number);
+        }),
     [rows]
   );
 
@@ -385,7 +400,16 @@ export function Stablecoins() {
                         <td className="min-w-0">
                           <Asset row={r} />
                         </td>
-                        <td className="num text-[var(--text)]">{usd(r.price)}</td>
+                        {/* Four decimals, not the usual two.
+                            The deviation beside it is computed from the full
+                            price, so a two decimal display does not reconcile
+                            with it: $1.14 next to +1453.8 bps invites the
+                            reader to check the arithmetic and get 1400. A
+                            stablecoin is read in the fourth decimal anyway,
+                            which is where a peg breaks. */}
+                        <td className="num text-[var(--text)]">
+                          {r.price == null ? usd(null) : `$${r.price.toFixed(4)}`}
+                        </td>
                         <td className="num">
                           <span
                             className="inline-block rounded px-1.5 py-0.5 font-semibold"

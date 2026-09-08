@@ -22,12 +22,6 @@ function severity(pctOfMcap: number | null): string {
 function Row({ r, maxPct }: { r: UnlockRow; maxPct: number }) {
   return (
     <tr>
-      <td className="whitespace-nowrap">
-        <div className="font-mono font-semibold text-[var(--text)]">{dateLabel(r.date)}</div>
-        <div className="mt-0.5 font-mono text-[10px] text-[var(--text3)]">
-          {r.daysAway === 0 ? "today" : `in ${r.daysAway}d`}
-        </div>
-      </td>
       <td className="min-w-[190px]">
         <div className="flex flex-wrap items-baseline gap-1.5">
           <span className="font-mono text-[11px] font-bold text-[var(--text)]">{r.symbol}</span>
@@ -39,6 +33,12 @@ function Row({ r, maxPct }: { r: UnlockRow; maxPct: number }) {
         {r.recipients.length > 0 && (
           <div className="mt-0.5 text-[10px] text-[var(--text3)]">{r.recipients.join(", ")}</div>
         )}
+      </td>
+      <td className="whitespace-nowrap">
+        <div className="font-mono font-semibold text-[var(--text)]">{dateLabel(r.date)}</div>
+        <div className="mt-0.5 font-mono text-[10px] text-[var(--text3)]">
+          {r.daysAway === 0 ? "today" : `in ${r.daysAway}d`}
+        </div>
       </td>
       {/* The share and the cap it is a share of, in one cell, directly after
           the token. The reading a reader wants from this row is how big the
@@ -94,8 +94,13 @@ export function Unlocks() {
           <TableWrap maxHeight={460} tight>
             <thead>
               <tr>
-                <th className="ident">Date</th>
+                {/* Token first, because it is the subject of the row and the
+                    first column is the one that pins when the table scrolls
+                    sideways. A date pinned against a scrolling row identifies
+                    nothing: several unlocks share a date and none of them is
+                    told apart by it. The order is still by date. */}
                 <th className="ident">Token</th>
+                <th className="ident">Date</th>
                 <th className="num" title="Against circulating cap, not fully diluted, so it measures the shock against what trades. The cap itself is underneath.">
                   % of mcap
                 </th>

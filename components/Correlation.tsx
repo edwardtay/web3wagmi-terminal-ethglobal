@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useApi } from "@/lib/useApi";
-import { AsOf, Loading, Panel, Segmented, Unavailable } from "@/components/ui";
+import { AsOf, InfoHint, Loading, Panel, Segmented, Unavailable } from "@/components/ui";
 import { num, NA } from "@/lib/format";
 import type { QuantPayload } from "@/app/api/quant/route";
 
@@ -154,11 +154,18 @@ export function Correlation() {
             </span>
           </div>
 
-          <p className="mt-3 text-[12px] leading-relaxed text-[var(--text2)]">
+          {/* The number is a finding and stays on the panel. The paragraph
+              explaining what a high reading means for a portfolio is a
+              definition, and a definition read once is furniture on every
+              later visit, so it moves behind the mark. */}
+          <p className="mt-3 flex flex-wrap items-center gap-1.5 text-[12px] text-[var(--text2)]">
             <span className="font-mono font-bold text-[var(--text)]">
               Average pairwise ρ {num(avg, 2)}
-            </span>{" "}
-            over {win} days across {syms.length} assets. {reading}
+            </span>
+            <span>
+              over {win} days across {syms.length} assets
+            </span>
+            <InfoHint text={reading} />
           </p>
         </>
       )}
