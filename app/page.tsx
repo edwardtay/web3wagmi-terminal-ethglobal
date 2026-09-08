@@ -20,6 +20,7 @@ import { OptionsDesk } from "@/components/OptionsDesk";
 import { Microstructure } from "@/components/Microstructure";
 import { ExchangeNetflow } from "@/components/ExchangeNetflow";
 import { DexPools } from "@/components/DexPools";
+import { Standards } from "@/components/Standards";
 import { ChainBoard } from "@/components/ChainBoard";
 import { ProtocolMovers } from "@/components/ProtocolMovers";
 import { Stablecoins } from "@/components/Stablecoins";
@@ -135,6 +136,10 @@ export default async function Home({
           <DexPools />
 
           <ChainBoard />
+
+          {/* The standardized schema read, next to the bespoke ones so the
+              difference between them is visible rather than asserted. */}
+          <Standards />
 
           <Section
             title="Protocols"

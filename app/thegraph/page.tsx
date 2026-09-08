@@ -51,6 +51,23 @@ export default function TheGraphPage() {
         <div className="mt-4">
           <Section title="How it works" id="how">
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+              <Note title="One query, nine protocols">
+                <p>
+                  A <strong className="text-[var(--text)]">standardized subgraph schema</strong>{" "}
+                  gives lending markets, DEXes, liquid staking and CDPs the same entities, so one
+                  query is answered by all of them. The{" "}
+                  <Link href="/#standards" className="underline hover:text-[var(--text)]">
+                    panel
+                  </Link>{" "}
+                  shows the literal query and what came back.
+                </p>
+                <p>
+                  Sent to Uniswap v3, which does not share the schema, the same query is rejected.
+                  Adding a protocol to the standardized table is one line. Adding one to a bespoke
+                  read is a second schema, a second query and a second mapping.
+                </p>
+              </Note>
+
               <Note title="Two products, because one is not enough">
                 <p>
                   The <strong className="text-[var(--text)]">Token API</strong> gives indexed balance
@@ -251,12 +268,16 @@ export default function TheGraphPage() {
               <p className="mt-3 text-[12px] leading-relaxed text-[var(--text2)]">
                 MIT, and it runs with no Graph key at all: the flow desk falls back to archive
                 JSON-RPC and the payload says which source answered.{" "}
+                {/* The public mirror, not the working repository. The working one
+                    is private and this link sat on the page a judge is sent to,
+                    so following it returned a 404 and the submission looked like
+                    it had no source at all. */}
                 <a
-                  href="https://github.com/edwardtay/web3wagmi-terminal"
+                  href="https://github.com/edwardtay/web3wagmi-terminal-ethglobal"
                   className="underline hover:text-[var(--text)]"
                   rel="noreferrer"
                 >
-                  github.com/edwardtay/web3wagmi-terminal
+                  github.com/edwardtay/web3wagmi-terminal-ethglobal
                 </a>
               </p>
             </Panel>

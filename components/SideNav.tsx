@@ -49,6 +49,7 @@ export const SECTION_GROUPS: { label: string; items: { id: string; label: string
     items: [
       { id: "netflow", label: "Exchange flow" },
       { id: "dex", label: "DEX pools" },
+      { id: "standards", label: "One query, many" },
       { id: "chains", label: "Chains" },
       { id: "protocols", label: "Protocols" },
       { id: "stablecoins", label: "Stablecoins" },
