@@ -1,7 +1,12 @@
 import { jsonResponse } from "@/lib/http";
 import { readStandards } from "@/lib/standards";
 
-// One query, nine protocols, four categories.
+// One query, nine protocols.
+//
+// The schema sorts them into three categories of its own: LENDING, EXCHANGE
+// and GENERIC. Worth stating as the schema states it rather than as the
+// protocols describe themselves, since it files MakerDAO under lending and
+// Lido under generic, and the whole point is that the shared vocabulary wins.
 //
 // Budget: ten gateway queries a refresh. At a 30 minute window that is 14,400 a
 // month against the free tier's 100,000, and the window is the only lever that

@@ -15,8 +15,8 @@ Its weakest desk was on-chain, and that is the desk The Graph now runs.
 
 **One query, nine protocols.** The clearest thing a standard buys. A Messari standardized
 subgraph gives lending markets, DEXes, liquid staking and CDPs the same entities, so the
-literal query in `lib/standards.ts` is sent unchanged to nine subgraphs across four categories
-and every one answers. Adding a tenth is one line, an id. Sent to Uniswap v3's own subgraph the
+literal query in `lib/standards.ts` is sent unchanged to nine subgraphs, which the schema files
+under three categories, and every one answers. Adding a tenth is one line, an id. Sent to Uniswap v3's own subgraph the
 same query is rejected with ``Type `Query` has no field `protocols` ``, and the panel shows that
 rejection, because the cost of a bespoke schema is better stated by the gateway than by us.
 

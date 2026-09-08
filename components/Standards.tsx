@@ -7,9 +7,10 @@ import { usdCompact, num } from "@/lib/format";
 // What a shared schema buys, shown rather than claimed.
 //
 // The table is one query's answer. Not one query per protocol and not a
-// template: the literal string above it is sent unchanged to nine subgraphs
-// across four categories, and every one of them answers because they share
-// Messari's schema.
+// template: the literal string above it is sent unchanged to nine subgraphs and
+// every one of them answers because they share Messari's schema. The category
+// column is the schema's own, which is why MakerDAO reads LENDING and Lido
+// reads GENERIC rather than what each calls itself.
 //
 // The line underneath is the same query sent to a subgraph that does not share
 // it. Uniswap v3's own schema has no `protocols` entity, so the gateway rejects

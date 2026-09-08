@@ -10,9 +10,14 @@ import { postJson } from "./http";
 // query and a second mapping.
 //
 // A standardized subgraph removes that. Messari's schema gives lending markets,
-// DEXes, liquid staking and CDPs the same entities, so the query below is sent
-// unchanged to nine protocols across four categories and every one of them
-// answers it. Adding a tenth is one line: an id.
+// DEXes and staking protocols the same entities, so the query below is sent
+// unchanged to nine of them and every one answers it. Adding a tenth is one
+// line: an id.
+//
+// The schema's own categories come back as LENDING, EXCHANGE and GENERIC, which
+// is not how every protocol would describe itself. That is the point rather
+// than a flaw: a shared vocabulary is only shared if it overrides the local
+// one.
 //
 // The failure is as informative as the success, and the panel shows it. Sent to
 // Uniswap v3's own subgraph, this exact query returns "Type `Query` has no
@@ -38,9 +43,9 @@ export const STANDARD_QUERY = `{
 /**
  * Messari standardized subgraphs on the decentralised network.
  *
- * Ids rather than names, because a name is not addressable. Four categories on
- * purpose: the point is not that nine lending markets answer one query, it is
- * that a lending market, a DEX, a liquid staking protocol and a CDP all do.
+ * Ids rather than names, because a name is not addressable. Deliberately not all
+ * of one kind: the point is not that nine lending markets answer one query, it
+ * is that a lending market, a DEX and a staking protocol all do.
  */
 const SUBGRAPHS: { label: string; id: string }[] = [
   { label: "Aave v3", id: "JCNWRypm7FYwV8fx5HhzZPSFaMxgkPuw4TnR3Gpi81zk" },
