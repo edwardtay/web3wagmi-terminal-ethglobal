@@ -13,12 +13,14 @@ what was built during it is set out in [CONTINUITY.md](CONTINUITY.md).
 The terminal already read prices, funding, open interest and options from exchange APIs.
 Its weakest desk was on-chain, and that is the desk The Graph now runs.
 
-**Two Graph products, composed.** Neither answers the question alone.
+**Two Graph products and four datasets, composed.** Neither product answers the question alone.
 
 | Product | What it answers |
 | --- | --- |
 | **Token API** (`lib/graph.ts`) | Balances arriving on exchange wallets. The intent to sell. |
 | **Uniswap v3 subgraph** via the decentralised gateway (`lib/subgraph.ts`) | The liquidity and daily volume that would have to absorb a sale. |
+| **Token API**, holders and supply | Whether an asset is held by a market or by a committee. WBTC reads 53% in the top ten and 1.5% in wallets that can act alone, which are two different findings. |
+| **Token API**, Hyperliquid liquidations and open interest | The leveraged side of the same question. Flow is supply arriving to be sold; a forced close is supply that will be sold whatever the holder wants. Open interest arrives in contracts, which is the unit the regime logic needs, so the onchain venue can be compared with the centralised one without converting. |
 
 Alone, each is a number without a reference. "A billion of USDT moved" is a normal Tuesday for
 Binance. Composed, they say whether what arrived is large against the venue that would have to

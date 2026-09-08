@@ -1,7 +1,14 @@
 # What existed before ETHOnline 2026, and what was built during it
 
 Submitted to the continuity pool, where only work done during the event is judged. This
-document draws that line. Every claim here is checkable against `git log`.
+document draws that line.
+
+**About this repository's history.** This is a public mirror. Its commits were written
+in one pass on 2026-09-07 to publish the code cleanly, so `git log` here records that
+import rather than the development timeline, and the commit hashes named below belong to
+the private working repository rather than to this one. They are quoted so the claim is
+specific enough to check against that repository, which can be shown on request. Nothing
+in this history should be read as evidence of when the work happened.
 
 ## Before the event
 
