@@ -33,7 +33,15 @@ export function Section({
           <h2 className="panel-h font-display text-xs font-semibold uppercase tracking-wider">{title}</h2>
           {hint && <InfoHint text={hint} />}
         </div>
-        {right && <div className="flex shrink-0 items-center gap-2">{right}</div>}
+        {right && (
+          // Not shrink-0. A header carrying two segmented controls is 465px wide,
+          // and refusing to shrink made the whole document 481px on a 375px phone:
+          // Chrome then zooms the page out to fit and the entire terminal slides
+          // sideways under the thumb. The parent already wraps this onto its own
+          // line when the title is long; letting it wrap internally too is what
+          // keeps it inside the viewport.
+          <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">{right}</div>
+        )}
       </div>
       {children}
     </section>
@@ -64,7 +72,15 @@ export function Panel({
             )}
             {hint && <InfoHint text={hint} />}
           </div>
-          {right && <div className="flex shrink-0 items-center gap-2">{right}</div>}
+          {right && (
+          // Not shrink-0. A header carrying two segmented controls is 465px wide,
+          // and refusing to shrink made the whole document 481px on a 375px phone:
+          // Chrome then zooms the page out to fit and the entire terminal slides
+          // sideways under the thumb. The parent already wraps this onto its own
+          // line when the title is long; letting it wrap internally too is what
+          // keeps it inside the viewport.
+          <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">{right}</div>
+        )}
         </div>
       )}
       {children}
@@ -201,13 +217,23 @@ export function InfoHint({ text, align = "left" }: { text: string; align?: "left
           e.stopPropagation();
           setOpen((v) => !v);
         }}
-        className={`inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border font-mono text-[9px] font-bold leading-none group-hover:border-[var(--accent)] group-hover:text-[var(--text)] ${
-          open
-            ? "border-[var(--accent)] text-[var(--text)]"
-            : "border-[var(--border)] text-[var(--text3)]"
+        // Drawn rather than typed.
+        //
+        // A question mark read as a control that would answer a question, and
+        // the letter i read as a letter: set in a header it came out as
+        // "i FEES", "i TO SUPPLIERS", because a 1px ring at this size is not
+        // enough to say the glyph is an icon. An icon whose circle is part of
+        // the mark cannot be mistaken for the label beside it, at any size, in
+        // any font. The button keeps its 20px box for the thumb.
+        className={`inline-flex h-5 w-5 shrink-0 cursor-help items-center justify-center group-hover:text-[var(--accent)] ${
+          open ? "text-[var(--accent)]" : "text-[var(--text3)]"
         }`}
       >
-        ?
+        <svg viewBox="0 0 16 16" className="h-[15px] w-[15px]" fill="none" aria-hidden focusable="false">
+          <circle cx="8" cy="8" r="6.75" stroke="currentColor" strokeWidth="1.3" />
+          <circle cx="8" cy="4.9" r="0.95" fill="currentColor" />
+          <path d="M8 7.2v4.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
       </button>
       <span
         id={id}

@@ -16,6 +16,7 @@ import { Section, Panel, Loading, Unavailable, InfoHint } from "./ui";
 
 interface Brief {
   date: string;
+  session?: string;
   writtenAt: string;
   text: string;
   read: string[];
@@ -94,7 +95,7 @@ export function MorningBrief() {
     <Section
       title="The brief"
       id="brief"
-      hint="Written by the terminal rather than asked for: one pass over every desk, on a schedule, in prose. Every figure in it comes from a panel below and nothing was gathered by the model, which is handed the readings and asked only to write them up. It describes conditions and never recommends a trade. Earlier notes are kept only while the server runs, because this terminal has no database and does not need one for anything else."
+      hint="Written by the terminal rather than asked for: one pass over every desk, in prose, once per six-hour session anchored to 00:00, 06:00, 12:00 and 18:00 UTC, which are roughly the handovers between Asia, Europe and New York. The note names its own session, so the one on screen is the one everybody else is reading and the next is due at a time you can predict. Every figure in it comes from a panel below and nothing was gathered by the model, which is handed the readings and asked only to write them up. It describes conditions and never recommends a trade. Earlier notes are kept only while the server runs, because this terminal has no database and does not need one for anything else."
       right={
         data?.brief ? (
           <span className="font-mono text-[10px] text-[var(--text3)]">{when(data.brief.writtenAt)}</span>
@@ -115,7 +116,7 @@ export function MorningBrief() {
 
             <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-[var(--border2)] pt-2.5">
               <span className="font-mono text-[10px] uppercase tracking-wide text-[var(--text3)]">
-                {data.brief.date}
+                {data.brief.session ?? data.brief.date}
               </span>
               <span className="flex flex-wrap items-center gap-1 font-mono text-[9px] text-[var(--text3)]">
                 read
@@ -147,7 +148,7 @@ export function MorningBrief() {
                 {past.map((b) => (
                   <div key={b.writtenAt}>
                     <div className="font-mono text-[10px] uppercase tracking-wide text-[var(--text3)]">
-                      {b.date} · {when(b.writtenAt)}
+                      {b.session ?? b.date} · {when(b.writtenAt)}
                     </div>
                     <p className="mt-0.5 text-[12px] leading-relaxed text-[var(--text2)]">{b.text}</p>
                   </div>

@@ -51,6 +51,11 @@ interface Row {
   total30d?: number | null;
   total1y?: number | null;
   totalAllTime?: number | null;
+  slug?: string;
+  /** The window before the window, which is what makes growth measurable. */
+  total48hto24h?: number | null;
+  total14dto7d?: number | null;
+  total60dto30d?: number | null;
 }
 interface Overview {
   protocols?: Row[];
@@ -68,6 +73,13 @@ const FIELD: Record<Period, keyof Row> = {
 
 export interface EarnerRow {
   name: string;
+  /**
+   * DefiLlama's own slug, which is what the drill-down asks for. Carried here
+   * so that route can check a requested slug against the board rather than
+   * forwarding whatever it is handed, which would make it an open proxy onto
+   * someone else's API.
+   */
+  slug: string | null;
   category: string | null;
   chains: string[];
   fees: Partial<Record<Period, number | null>>;
@@ -78,45 +90,14 @@ export interface EarnerRow {
   /** Revenue as a share of fees over 30 days, 0 to 1. What the protocol keeps. */
   takeRate: number | null;
   /**
-   * Yesterday's fees against the daily average of the twenty-nine days before
-   * it. Above 1 is earning faster than its own recent normal, below 1 slower.
-   * Null where there is no prior period to compare against, or where it is too
-   * small for the ratio to be a statement.
+   * Fees over the window before this one, so the panel can compare like with
+   * like: yesterday against the day before, this week against last week, this
+   * month against the month before. Only the three shortest windows have a
+   * prior; a year and all time have nothing to sit beside.
    */
-  pace: number | null;
+  prior: Partial<Record<Period, number | null>>;
 }
 
-/**
- * The daily run rate below which pace is withheld.
- *
- * A ratio finds the smallest denominator unless something stops it. This is
- * the same guard the standardized panel puts on its take rate, for the same
- * reason: the number is only a statement about a business while there is a
- * business to make a statement about.
- */
-const MIN_DAILY_FOR_PACE = 1_000;
-
-/**
- * Yesterday against the twenty-nine days before it.
- *
- * The baseline deliberately excludes the day being measured. Comparing a day
- * to a window that contains it makes the day its own denominator, which
- * dampens every real surge and, worse, hands a protocol with no history a
- * headline number: Pyth Pro earned $0.72m yesterday and $0.72m over thirty
- * days, because yesterday was its first day, and against the thirty-day
- * average that reads as a flat 30.00x surge. It is not a surge, it is the
- * arithmetic of dividing a number by a thirtieth of itself.
- *
- * With the prior period as the baseline that case has no denominator at all
- * and returns null, which is the truthful answer: there is nothing yet to be
- * faster than.
- */
-function pace(day: number | null, month: number | null): number | null {
-  if (day == null || month == null) return null;
-  const priorDaily = (month - day) / 29;
-  if (!Number.isFinite(priorDaily) || priorDaily < MIN_DAILY_FOR_PACE) return null;
-  return day / priorDaily;
-}
 
 // Zero means "not published" far more often than it means zero in these
 // documents, so it is read as absent. That is right in general and wrong in one
@@ -201,9 +182,9 @@ export async function GET() {
     const h = periods(holdById.get(key));
     const f30 = f.d30 ?? null;
     const v30 = v.d30 ?? null;
-    const f1 = f.d1 ?? null;
     return {
       name: r.displayName || r.name || "unknown",
+      slug: r.slug ?? null,
       category: r.category ?? null,
       chains: (r.chains ?? []).slice(0, 4),
       fees: f,
@@ -214,7 +195,11 @@ export async function GET() {
       // launchpad or a quiet DEX is noise and a ratio built on noise is worse
       // than no ratio.
       takeRate: f30 && v30 != null && f30 > 0 ? Math.min(1, v30 / f30) : null,
-      pace: pace(f1, f30),
+      prior: {
+        d1: num(r.total48hto24h),
+        d7: num(r.total14dto7d),
+        d30: num(r.total60dto30d),
+      },
     };
   };
 
@@ -224,7 +209,7 @@ export async function GET() {
   // The leaders of every column, on every window.
   //
   // Not the top N by fees. The panel lets a reader sort by revenue, by what
-  // reaches holders, by pace, over any of five windows, and a sort can only
+  // reaches holders, by growth, over any of five windows, and a sort can only
   // rank rows that were sent: truncating on one metric server-side would
   // silently answer a different question than the one the reader asked. So
   // take the top thirty by each of the three metrics on each of the five

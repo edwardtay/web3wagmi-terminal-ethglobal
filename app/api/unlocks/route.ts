@@ -3,7 +3,13 @@ import { getJson, jsonResponse } from "@/lib/http";
 // api.llama.fi/emissions and /emissionsBreakdown both answer 402 on the free
 // tier now. The dataset bucket behind the public unlocks page is still open,
 // so that is the source: one ~21MB index covering every tracked token.
-export const revalidate = 900;
+// Six hours, not fifteen minutes.
+//
+// An unlock schedule is a calendar. It is decided months ahead in a contract
+// and does not move intraday, so refreshing it four times an hour bought
+// nothing and cost a great deal: the source document has grown to 22MB and
+// serves at about 125KB/s, which is nearly three minutes on the wire.
+export const revalidate = 21_600;
 
 const SRC = "https://defillama-datasets.llama.fi/emissionsIndex";
 
@@ -67,7 +73,13 @@ function dayKey(ms: number): string {
 }
 
 export async function GET() {
-  const doc = await getJson<{ data?: IndexEntry[] }>(SRC, { revalidate, timeout: 25_000 });
+  // 240s, measured. The document is 22MB and took 177 seconds to arrive; the
+  // old 25 second ceiling could not finish it, so this desk had gone dark the
+  // same way the yields desk had, and in the same silent way: not an error, an
+  // ok:false with an empty queue, which on the page reads as "no unlocks are
+  // coming". That is a claim about the market, and it was false. An empty
+  // unlock queue and an unfinished download must never look alike.
+  const doc = await getJson<{ data?: IndexEntry[] }>(SRC, { revalidate, timeout: 240_000 });
   const entries = doc?.data;
 
   const empty: UnlocksPayload = {

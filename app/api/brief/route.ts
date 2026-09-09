@@ -1,5 +1,5 @@
 import { jsonResponse } from "@/lib/http";
-import { BRIEF_TTL, writeBrief, type Brief } from "@/lib/brief";
+import { briefSession, writeBrief, type Brief } from "@/lib/brief";
 
 // The morning note, written once and then stood by.
 //
@@ -20,9 +20,12 @@ let current: { at: number; brief: Brief } | null = null;
 const archive: Brief[] = [];
 let inflight: Promise<Brief | null> | null = null;
 
+// Fresh means written in the current session, not written recently. A note
+// from 11:58 is stale at 12:01 because the session turned over, and a note from
+// 12:01 stands until 18:00 however long that is.
 function fresh(): Brief | null {
   if (!current) return null;
-  return Date.now() - current.at < BRIEF_TTL * 1000 ? current.brief : null;
+  return briefSession(current.at) === briefSession() ? current.brief : null;
 }
 
 export async function GET() {

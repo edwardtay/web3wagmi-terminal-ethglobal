@@ -242,7 +242,7 @@ interface EarnerLike {
   supply: Partial<Record<string, number | null>>;
   holders: Partial<Record<string, number | null>>;
   takeRate: number | null;
-  pace: number | null;
+  prior: Partial<Record<string, number | null>>;
 }
 
 interface StandardsPayload {
@@ -413,7 +413,7 @@ export const TOOLS: ToolSpec[] = [
   {
     name: "fee_leaders",
     description:
-      "Who earns, and where the money goes. For any window (24 hours, 7 days, 30 days, a year, all time) it ranks apps or chains by whichever of four things the question is about: total fees users paid, the part the protocol kept, the part that reached token holders, or pace, meaning how yesterday compares to the protocol's own recent normal. Covers the whole market, hundreds of protocols, not a curated list. Use it for any question about who earns the most, who is most profitable, who returns the most to holders, who is earning more or less than usual, or where the money is going. Use compare_protocols instead when the question is about total value locked or about the nine protocols on the standardized schema.",
+      "Who earns, and where the money goes. For any window (24 hours, 7 days, 30 days, a year, all time) it ranks apps or chains by whichever of four things the question is about: total fees users paid, the part the protocol kept, the part that reached token holders, or growth, meaning how this window compares with the window before it. Covers the whole market, hundreds of protocols, not a curated list. Use it for any question about who earns the most, who is most profitable, who returns the most to holders, who is earning more or less than usual, or where the money is going. Use compare_protocols instead when the question is about total value locked or about the nine protocols on the standardized schema.",
     parameters: {
       type: "object",
       properties: {
@@ -429,9 +429,9 @@ export const TOOLS: ToolSpec[] = [
         },
         rankBy: {
           type: "string",
-          enum: ["fees", "revenue", "holders", "pace"],
+          enum: ["fees", "revenue", "holders", "growth"],
           description:
-            "What to rank on. fees is everything users paid, revenue is what the protocol kept out of that, holders is what reached token holders, which is the closest thing here to profit. pace ranks by how far yesterday sits above or below the protocol's own recent normal, and ignores the window. Defaults to fees.",
+            "What to rank on. fees is everything users paid, revenue is what the protocol kept out of that, holders is what reached token holders, which is the closest thing here to profit. growth ranks by the change against the window before this one, so it answers who is speeding up or slowing down rather than who is large. Defaults to fees.",
         },
         name: {
           type: ["string", "null"],
@@ -449,16 +449,27 @@ export const TOOLS: ToolSpec[] = [
       const period = typeof args.period === "string" && ["d1", "d7", "d30", "y1", "all"].includes(args.period)
         ? args.period
         : "d7";
-      const rankBy = typeof args.rankBy === "string" && ["fees", "revenue", "holders", "pace"].includes(args.rankBy)
-        ? (args.rankBy as "fees" | "revenue" | "holders" | "pace")
+      const rankBy = typeof args.rankBy === "string" && ["fees", "revenue", "holders", "growth"].includes(args.rankBy)
+        ? (args.rankBy as "fees" | "revenue" | "holders" | "growth")
         : "fees";
+
+      // Percent change against the window before this one, withheld where that
+      // earlier window was too small to divide by. The same guard the panel
+      // uses, for the same reason: a percentage off almost nothing is not a
+      // statement, and a superlative question would otherwise go straight to it.
+      const growth = (r: EarnerLike): number | null => {
+        const now = r.fees?.[period] ?? null;
+        const was = r.prior?.[period] ?? null;
+        if (now == null || was == null || was < 1_000) return null;
+        return (now / was - 1) * 100;
+      };
 
       // The route ships the leaders of every column rather than the biggest
       // rows by fees, precisely so this sort is over rows that are present:
       // most of the top protocols by holder revenue sit outside the top
       // twenty-five by fees.
       const score = (r: EarnerLike) =>
-        rankBy === "pace" ? r.pace : (r[rankBy]?.[period] ?? null);
+        rankBy === "growth" ? growth(r) : (r[rankBy]?.[period] ?? null);
 
       // Ranked on the window asked for rather than on the stored order, which
       // is by 30 days: "most fees this week" and "most fees this year" are
@@ -470,7 +481,7 @@ export const TOOLS: ToolSpec[] = [
       const want = typeof args.name === "string" ? args.name.toLowerCase().trim() : null;
       const pool = want ? rows.filter((r) => r.name.toLowerCase().includes(want)) : rows;
       if (want && !pool.length) {
-        return { error: `Nothing here is named ${args.name}. The board covers apps and chains that publish a fee adapter, ranked by fees, revenue, what reaches holders, or pace.` };
+        return { error: `Nothing here is named ${args.name}. The board covers apps and chains that publish a fee adapter, ranked by fees, revenue, what reaches holders, or growth.` };
       }
 
       const ranked = [...pool]
@@ -486,7 +497,10 @@ export const TOOLS: ToolSpec[] = [
           keptByProtocol: usdRanked(r.revenue[period] ?? null),
           reachedTokenHolders: usdRanked(r.holders?.[period] ?? null),
           shareKeptOver30d: r.takeRate === null ? null : `${(r.takeRate * 100).toFixed(0)}%`,
-          pace: r.pace === null ? null : `${r.pace.toFixed(2)}x`,
+          changeVsPreviousWindow: (() => {
+            const g = growth(r);
+            return g === null ? null : `${g > 0 ? "+" : ""}${Math.round(g)}%`;
+          })(),
         }));
 
       return {
@@ -494,7 +508,7 @@ export const TOOLS: ToolSpec[] = [
         rankedBy: rankBy,
         [kind]: ranked,
         interpretationNotes:
-          "The four money figures are one flow, in order: users paid the fee, the suppliers who put up the capital took their share of it, the protocol kept the rest, and part of what it kept reached token holders. Paid to suppliers plus kept by protocol equals the fee exactly. So a large fee with a small kept figure is a protocol running thin on purpose rather than a failing one, and the two are worth telling apart out loud. Where a figure is null the source does not publish it for that protocol, which is not the same as zero: never call a protocol unprofitable or say it returns nothing to holders on the strength of a null. Stablecoin issuers appear here because their reserve yield is booked as fees and they keep effectively all of it, which is why they lead most windows: say what they are when quoting them rather than setting them beside a DEX without comment. Share kept is measured over 30 days regardless of the window asked for, and pace always measures yesterday against the 29 days before it regardless of the window, so it is a statement about right now and not about the window. Pace says nothing about size: a small protocol at 3x is still small, and it should be quoted with the figure it is a multiple of. Rank is the order on whatever rankedBy says and it is authoritative: rank 1 leads, and two rows never share a rank. Figures are rounded, so near neighbours can print the same and are still ordered. Never call them tied.",
+          "The four money figures are one flow, in order: users paid the fee, the suppliers who put up the capital took their share of it, the protocol kept the rest, and part of what it kept reached token holders. Paid to suppliers plus kept by protocol equals the fee exactly. So a large fee with a small kept figure is a protocol running thin on purpose rather than a failing one, and the two are worth telling apart out loud. Where a figure is null the source does not publish it for that protocol, which is not the same as zero: never call a protocol unprofitable or say it returns nothing to holders on the strength of a null. Stablecoin issuers appear here because their reserve yield is booked as fees and they keep effectively all of it, which is why they lead most windows: say what they are when quoting them rather than setting them beside a DEX without comment. Share kept is measured over 30 days regardless of the window asked for. The change compares this window with the one immediately before it, like against like: a week against the previous week, a month against the month before. It is null on the year and all-time views because those have no prior window, and null is not zero growth. It says nothing about size, only direction, so a small protocol doubling is still small and the change should be quoted beside the figure it is a change in. Rank is the order on whatever rankedBy says and it is authoritative: rank 1 leads, and two rows never share a rank. Figures are rounded, so near neighbours can print the same and are still ordered. Never call them tied.",
       };
     },
   },
@@ -738,7 +752,7 @@ const PICKING = `You answer crypto market questions for a terminal by calling it
 - Asked why something moved or what happens next, also read market_coverage.
 - The dislocation queue ranks what moved far from its own reference. It never holds a level. For a level, call the tool that has it.
 - A question comparing protocols, or asking which is largest, or how one stacks against another, is compare_protocols. It answers about protocols rather than tokens, and it spans the nine on the standardized schema.
-- A question about who earns, who is most profitable, which app or chain makes the most money, who returns the most to token holders, or who is earning more or less than usual is fee_leaders. Set rankBy to match the question: revenue for who keeps the most, holders for what reaches the token, pace for who is running hot or cold against their own normal. It covers the whole market. compare_protocols covers nine protocols, so ranking earnings from it would name the biggest of nine as the biggest of all: never answer an earnings question from it.
+- A question about who earns, who is most profitable, which app or chain makes the most money, who returns the most to token holders, or who is earning more or less than usual is fee_leaders. Set rankBy to match the question: revenue for who keeps the most, holders for what reaches the token, growth for who is speeding up or slowing down against the window before. It covers the whole market. compare_protocols covers nine protocols, so ranking earnings from it would name the biggest of nine as the biggest of all: never answer an earnings question from it.
 - You cover what this terminal measures: prices, funding, open interest, options, exchange flow, onchain liquidity and ownership. Asked to explain a concept or how a protocol works, call nothing.
 - When you have called every tool the question needs, reply with the single word DONE and nothing else. Never write the answer here. Another turn writes it, and anything you write in this one is discarded.`;
 

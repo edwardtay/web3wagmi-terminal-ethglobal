@@ -25,9 +25,36 @@ import { usdCompact } from "./format";
 /** How long a brief stands before another is written. */
 export const BRIEF_TTL = 6 * 60 * 60;
 
+/**
+ * The UTC session a moment falls in, counted from the epoch.
+ *
+ * The window is anchored to the clock rather than to whenever the first reader
+ * happened to arrive. A drifting six hours means the note is rewritten at
+ * 04:12 one day and 09:47 the next, so nobody can say when the current one was
+ * written or when the next is due, and two readers an hour apart can be looking
+ * at notes from different windows with no way to tell.
+ *
+ * Anchored, the boundaries land on 00:00, 06:00, 12:00 and 18:00 UTC, because
+ * the epoch itself starts at midnight UTC and six divides the day evenly. Those
+ * are roughly the session handovers: Asia into Europe, Europe into New York,
+ * the US close, and the quiet hours after it.
+ */
+export function briefSession(ms: number = Date.now()): number {
+  return Math.floor(ms / (BRIEF_TTL * 1000));
+}
+
+/** That session as a label a reader can check against a clock. */
+export function sessionLabel(ms: number = Date.now()): string {
+  const start = new Date(briefSession(ms) * BRIEF_TTL * 1000);
+  const hh = String(start.getUTCHours()).padStart(2, "0");
+  return `${start.toISOString().slice(0, 10)} ${hh}:00 UTC`;
+}
+
 export interface Brief {
   /** The day this brief describes, in UTC. */
   date: string;
+  /** The six-hour session it belongs to, such as "2026-09-09 12:00 UTC". */
+  session: string;
   writtenAt: string;
   text: string;
   /** Which desks were readable when it was written. */
@@ -210,6 +237,7 @@ export async function writeBrief(origin: string): Promise<Brief | null> {
 
   return {
     date: now.toISOString().slice(0, 10),
+    session: sessionLabel(now.getTime()),
     writtenAt: now.toISOString(),
     text,
     read,

@@ -34,6 +34,15 @@ const ROUTES: Route[] = [
   { path: "/api/breadth", label: "Breadth and rotation", upstream: "Binance spot" },
   { path: "/api/stress", label: "Stress index", upstream: "Binance, Deribit, DefiLlama" },
   { path: "/api/unlocks", label: "Token unlocks", upstream: "DefiLlama emissions" },
+  // Register a desk here when it is built, not after it fails. Both silent
+  // outages this terminal has had were a large upstream document outgrowing its
+  // timeout, and both went unnoticed because the route answered ok:false with
+  // an empty list, which reads on the panel as a market statement rather than a
+  // fetch that never finished. This page is what tells those two apart, and it
+  // can only do it for routes it knows about.
+  { path: "/api/revenue", label: "Fees and revenue", upstream: "DefiLlama fees" },
+  { path: "/api/standards", label: "Standardized subgraphs", upstream: "The Graph gateway" },
+  { path: "/api/brief", label: "The brief", upstream: "the desks below, plus the model" },
 ];
 
 interface Result {

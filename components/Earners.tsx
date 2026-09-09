@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useApi } from "@/lib/useApi";
 import { Section, Panel, Loading, Unavailable, AsOf, Segmented, TableWrap, Th, useSort } from "./ui";
 import { usdCompact, pctPlain } from "@/lib/format";
 import { brandColor } from "@/lib/brandColors";
+import { EarnerDetail } from "./EarnerDetail";
 
 // The whole path a dollar takes, and every question about it reachable.
 //
@@ -46,6 +47,7 @@ const VIEWS: { value: View; label: string }[] = [
 
 interface Row {
   name: string;
+  slug: string | null;
   category: string | null;
   chains: string[];
   fees: Partial<Record<Period, number | null>>;
@@ -53,7 +55,7 @@ interface Row {
   supply: Partial<Record<Period, number | null>>;
   holders: Partial<Record<Period, number | null>>;
   takeRate: number | null;
-  pace: number | null;
+  prior: Partial<Record<Period, number | null>>;
 }
 interface Payload {
   ok: boolean;
@@ -66,13 +68,15 @@ interface Payload {
 /** One row resolved to the chosen window, because useSort ranks on flat keys. */
 interface Flat {
   name: string;
+  slug: string | null;
   category: string | null;
   fees: number | null;
   revenue: number | null;
   supply: number | null;
   holders: number | null;
   takeRate: number | null;
-  pace: number | null;
+  /** Percent change against the window before this one, where one exists. */
+  change: number | null;
 }
 
 export function Earners() {
@@ -84,23 +88,30 @@ export function Earners() {
     const src = view === "chains" ? (data?.chains ?? []) : (data?.apps ?? []);
     return src.map((r) => ({
       name: r.name,
+      slug: r.slug,
       category: r.category,
       fees: r.fees[period] ?? null,
       revenue: r.revenue[period] ?? null,
       supply: r.supply?.[period] ?? null,
       holders: r.holders[period] ?? null,
       takeRate: r.takeRate,
-      // Pace reads yesterday against a thirty-day average, so it is the same
-      // number whichever window is on screen. Shown rather than hidden on the
-      // other windows, because "earning faster than usual" is worth knowing
-      // beside a yearly total, and the header says what it measures.
-      pace: r.pace,
+      // Like against like: yesterday against the day before, this week against
+      // last week, this month against the month before. A year and all time
+      // have no prior window, so the column is empty there rather than
+      // borrowing a different comparison and calling it the same thing.
+      change: growth(r.fees[period] ?? null, r.prior?.[period] ?? null),
     }));
   }, [data, view, period]);
 
   const { sorted, key, dir, toggle } = useSort<Flat>(flat, { key: "fees" });
   const rows = sorted.slice(0, 25);
   const sort = { key, dir, toggle };
+  const [open, setOpen] = useState<string | null>(null);
+
+  // One open at a time. Two detail reads on screen means two sparklines at two
+  // scales next to each other, which invites comparing them, and they are not
+  // comparable: each is drawn to its own range.
+  const COLUMNS = 7;
 
   const body = () => {
     if (loading) return <Loading rows={8} />;
@@ -111,7 +122,10 @@ export function Earners() {
       <TableWrap maxHeight={520}>
         <thead>
           <tr>
-            <Th label={view === "chains" ? "Chain" : "App"} />
+            <Th
+              label={view === "chains" ? "Chain" : "App"}
+              hint="Open a row for ninety days of its fees, the chains they actually came from, and who holds its token, which is read from The Graph rather than from the fee source."
+            />
             <Th
               label="Fees"
               sortKey="fees"
@@ -148,17 +162,21 @@ export function Earners() {
               hint="The part of revenue that reaches token holders, through buybacks or distributions. The closest honest reading of profit available here, since emissions are not published. Blank means none is reported, which is not the same as none reaching them."
             />
             <Th
-              label="Pace"
-              sortKey="pace"
+              label={CHANGE_LABEL[period]}
+              sortKey="change"
               sort={sort}
               num
-              hint="Yesterday's fees against the daily average of the twenty-nine days before it. Above 1.0 is earning faster than its own recent normal, below 1.0 slower, and it says nothing about size: a small protocol at 3x is still small. The baseline excludes yesterday on purpose, so a day cannot be its own denominator. Always measured on yesterday, whichever window the table is showing. Blank where there is no prior period to compare against, which is what a protocol that launched this month looks like, or where the baseline is under a thousand dollars a day."
+              hint="Fees over this window against the window immediately before it: yesterday against the day before, this week against last week, this month against the month before. It says nothing about size, only about direction, so a small protocol doubling is still small. Empty on the year and all-time views, which have no prior window to sit beside, and empty where the earlier window was under a thousand dollars, since a percentage off almost nothing is not a statement."
             />
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.name}>
+            <Fragment key={r.name}>
+            <tr
+              onClick={() => r.slug && setOpen((v) => (v === r.slug ? null : r.slug))}
+              className={r.slug ? "cursor-pointer" : undefined}
+            >
               <td>
                 <div className="flex items-center gap-1.5">
                   {view === "chains" && (
@@ -173,6 +191,11 @@ export function Earners() {
                 {r.category && view !== "chains" && (
                   <div className="font-mono text-[10px] text-[var(--text3)]">{r.category}</div>
                 )}
+                {r.slug && (
+                  <div className="font-mono text-[9px] text-[var(--text3)]">
+                    {open === r.slug ? "hide detail" : "detail"}
+                  </div>
+                )}
               </td>
               <td className="num text-[var(--text)]">{usdCompact(r.fees)}</td>
               <td className="num text-[var(--text2)]">{usdCompact(r.supply)}</td>
@@ -181,10 +204,12 @@ export function Earners() {
                 {r.takeRate == null ? "n/a" : pctPlain(r.takeRate * 100, 0)}
               </td>
               <td className="num text-[var(--text2)]">{usdCompact(r.holders)}</td>
-              <td className="num" style={{ color: paceColor(r.pace) }}>
-                {r.pace == null ? "n/a" : `${r.pace.toFixed(2)}x`}
+              <td className="num" style={{ color: changeColor(r.change) }}>
+                {r.change == null ? "n/a" : `${r.change > 0 ? "+" : ""}${Math.round(r.change)}%`}
               </td>
             </tr>
+            {open === r.slug && r.slug && <EarnerDetail slug={r.slug} colSpan={COLUMNS} />}
+            </Fragment>
           ))}
         </tbody>
       </TableWrap>
@@ -209,15 +234,37 @@ export function Earners() {
   );
 }
 
+/** What the change column is actually comparing, said in the header. */
+const CHANGE_LABEL: Record<Period, string> = {
+  d1: "vs prev day",
+  d7: "vs prev week",
+  d30: "vs prev month",
+  y1: "Change",
+  all: "Change",
+};
+
 /**
- * Colour only where the reading is decisive.
+ * Percent change, withheld where the earlier window was too small to divide by.
  *
- * A row at 1.1x is inside its own noise and colouring it would invent a signal.
+ * The same guard every ratio on this terminal carries. A protocol that took
+ * four hundred dollars last week and eleven thousand this week is up 2,650%,
+ * and printing that beside Uniswap doubling on $52m says the smaller number is
+ * the bigger story.
+ */
+function growth(now: number | null, before: number | null): number | null {
+  if (now == null || before == null || before < 1_000) return null;
+  return (now / before - 1) * 100;
+}
+
+/**
+ * Colour only where the move is decisive.
+ *
+ * A row up 4% is inside its own noise and colouring it would invent a signal.
  * The thresholds are wide on purpose.
  */
-function paceColor(pace: number | null): string | undefined {
-  if (pace == null) return undefined;
-  if (pace >= 1.5) return "var(--pos)";
-  if (pace <= 0.5) return "var(--neg)";
+function changeColor(change: number | null): string | undefined {
+  if (change == null) return undefined;
+  if (change >= 25) return "var(--pos)";
+  if (change <= -25) return "var(--neg)";
   return undefined;
 }
