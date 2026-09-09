@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { pct, NA } from "@/lib/format";
 import { TOKEN_ICONS, TOKEN_ICON_VERSION } from "@/lib/tokenIcons";
 
@@ -48,7 +48,7 @@ export function Panel({
   children,
   className = "",
 }: {
-  title?: string;
+  title?: React.ReactNode;
   hint?: string;
   right?: React.ReactNode;
   children: React.ReactNode;
@@ -152,16 +152,69 @@ export function AsOf({ iso, staleMs = 10 * 60 * 1000 }: { iso?: string | null; s
  * Small "?" affordance revealing an explanation on hover, so panels stay dense
  * without leaving a jargon term unexplained. Pure CSS group-hover, no state.
  */
+/**
+ * The caveat behind a mark.
+ *
+ * A button rather than a hover target, because hover does not exist on a
+ * phone. These carry the things a professional cannot read off the number,
+ * which cadence a rate was annualised on, whether a blank is a zero or an
+ * absence, and on touch every one of them was unreachable: the mark rendered,
+ * invited a tap, and did nothing.
+ *
+ * Hover still opens it on a pointer device, so nothing is lost on a desk. The
+ * tap toggles, and Escape or a press anywhere else closes it.
+ */
 export function InfoHint({ text, align = "left" }: { text: string; align?: "left" | "right" }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  const ref = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("touchstart", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("touchstart", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   return (
-    <span className="group relative inline-flex align-middle">
-      <span className="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-[var(--border)] font-mono text-[9px] font-bold leading-none text-[var(--text3)] group-hover:border-[var(--accent)] group-hover:text-[var(--text)]">
-        ?
-      </span>
-      <span
-        className={`pointer-events-none absolute top-full z-50 mt-1.5 hidden w-64 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2.5 text-[11px] font-normal normal-case leading-relaxed tracking-normal text-[var(--text2)] shadow-[var(--shadow-lg)] group-hover:block ${
-          align === "right" ? "right-0" : "left-0"
+    <span ref={ref} className="group relative inline-flex align-middle">
+      <button
+        type="button"
+        aria-label="What this means"
+        aria-expanded={open}
+        aria-describedby={open ? id : undefined}
+        onClick={(e) => {
+          // The mark sits inside table headers that sort on click and inside
+          // cards that link. Neither should fire when the caveat is opened.
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+        className={`inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border font-mono text-[9px] font-bold leading-none group-hover:border-[var(--accent)] group-hover:text-[var(--text)] ${
+          open
+            ? "border-[var(--accent)] text-[var(--text)]"
+            : "border-[var(--border)] text-[var(--text3)]"
         }`}
+      >
+        ?
+      </button>
+      <span
+        id={id}
+        role="tooltip"
+        className={`pointer-events-none absolute top-full z-50 mt-1.5 w-[min(16rem,calc(100vw-2rem))] rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2.5 text-[11px] font-normal normal-case leading-relaxed tracking-normal text-[var(--text2)] shadow-[var(--shadow-lg)] ${
+          open ? "block" : "hidden group-hover:block"
+        } ${align === "right" ? "right-0" : "left-0"}`}
       >
         {text}
       </span>
@@ -334,10 +387,21 @@ export function Th({
   className?: string;
 }) {
   const cls = `${num ? "num" : "ident"} ${className}`.trim();
+  // A hint is a button, not a title attribute.
+  //
+  // The native tooltip has no touch equivalent at all: on a phone the dotted
+  // underline said a caveat existed and there was no gesture that would show
+  // it. These headers carry the things a number cannot say on its own, so on
+  // the smaller screen the whole mechanism was decorative.
+  const mark = hint ? <InfoHint text={hint} align={num ? "right" : "left"} /> : null;
+
   if (!sortKey || !sort) {
     return (
-      <th scope="col" className={cls} title={hint}>
-        {label}
+      <th scope="col" className={cls}>
+        <span className={`inline-flex items-center gap-1 ${num ? "flex-row-reverse" : ""}`}>
+          <span>{label}</span>
+          {mark}
+        </span>
       </th>
     );
   }
@@ -350,20 +414,25 @@ export function Th({
       // The browser reads this out, so a sorted column announces itself rather
       // than only looking sorted.
       aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
-      title={hint}
     >
-      <button
-        type="button"
-        onClick={() => sort.toggle(sortKey)}
-        className={`inline-flex items-center gap-1 font-inherit uppercase tracking-[inherit] ${
-          active ? "text-[var(--text)]" : "hover:text-[var(--text2)]"
-        }`}
-      >
-        <span>{label}</span>
-        <span aria-hidden className={active ? "text-[var(--accent2)]" : "opacity-0 group-hover:opacity-40"}>
-          {active ? (sort.dir === "asc" ? "\u2191" : "\u2193") : "\u2195"}
-        </span>
-      </button>
+      <span className={`inline-flex items-center gap-1 ${num ? "flex-row-reverse" : ""}`}>
+        <button
+          type="button"
+          onClick={() => sort.toggle(sortKey)}
+          // Padding rather than a bare inline button. A one line header is a
+          // 12px tap target, and sorting a column on a phone meant hitting it
+          // exactly.
+          className={`-my-1 inline-flex items-center gap-1 py-1 font-inherit uppercase tracking-[inherit] ${
+            active ? "text-[var(--text)]" : "hover:text-[var(--text2)]"
+          }`}
+        >
+          <span>{label}</span>
+          <span aria-hidden className={active ? "text-[var(--accent2)]" : "opacity-40"}>
+            {active ? (sort.dir === "asc" ? "\u2191" : "\u2193") : "\u2195"}
+          </span>
+        </button>
+        {mark}
+      </span>
     </th>
   );
 }
@@ -444,14 +513,24 @@ export function TableWrap({
    * and it shows most on a phone.
    */
   tight = false,
+  /**
+   * Freeze the first two columns instead of one.
+   *
+   * For a table that leads with a rank: the identity is in the second column,
+   * so pinning only the first leaves a strip of bare numbers beside rows whose
+   * names have scrolled away.
+   */
+  pinTwo = false,
 }: {
   children: React.ReactNode;
   maxHeight?: number;
   tight?: boolean;
+  pinTwo?: boolean;
 }) {
+  const cls = ["tbl", tight && "tbl-tight", pinTwo && "tbl-pin2"].filter(Boolean).join(" ");
   return (
     <div className="thin-scroll overflow-auto rounded-lg border border-[var(--border)]" style={{ maxHeight }}>
-      <table className={tight ? "tbl tbl-tight" : "tbl"}>{children}</table>
+      <table className={cls}>{children}</table>
     </div>
   );
 }

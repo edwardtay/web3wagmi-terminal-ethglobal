@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BarCell, InfoHint, LivePill, Panel, Section, Segmented, TableWrap, Unavailable } from "@/components/ui";
+import { BarCell, InfoHint, LivePill, Panel, Section, Segmented, TableWrap, Th, Unavailable } from "@/components/ui";
 import { clockTime, compact, pctPlain, price, usdCompact } from "@/lib/format";
 import { useApi } from "@/lib/useApi";
 import { unitOf, useLiquidations, type LiqEvent } from "@/lib/useLiquidations";
@@ -72,14 +72,10 @@ function OnchainLiquidations() {
         <thead>
           <tr>
             <th className="ident">Coin</th>
-            <th className="ident" title="The venue's own event name, kept rather than renamed.">
-              Event
-            </th>
+            <Th label="Event" hint="The venue's own event name, kept rather than renamed." />
             <th className="num">Notional</th>
             <th className="num">Price</th>
-            <th className="ident" title="The liquidated account. A CEX print has no address.">
-              Account
-            </th>
+            <Th label="Account" hint="The liquidated account. A CEX print has no address." />
           </tr>
         </thead>
         <tbody>
@@ -134,7 +130,10 @@ export function Liquidations() {
               session from {clockTime(liq.sessionStart)}
             </span>
           )}
-          <LivePill live={live} label={live ? "stream live" : liq.status === "connecting" ? "connecting" : "reconnecting"} />
+          {/* "live" alone. The pill already carries a pulsing dot and the word
+              stream added a word without adding a fact: every other panel's
+              pill says how fresh it is, not by what transport it arrived. */}
+          <LivePill live={live} label={live ? "live" : liq.status === "connecting" ? "connecting" : "reconnecting"} />
         </>
       }
     >

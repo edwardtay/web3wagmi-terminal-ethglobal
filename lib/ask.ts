@@ -209,6 +209,20 @@ function reading(kind: string, flow24h: number | null, vsVolume: number | null):
     : "Coins left exchanges. That reduces the supply available to sell at short notice, which is the constructive direction.";
 }
 
+interface StandardsPayload {
+  rows?: {
+    label: string;
+    name: string | null;
+    type: string | null;
+    tvlUsd: number | null;
+    revenueUsd: number | null;
+    users: number | null;
+    error?: string;
+  }[];
+  answered?: number;
+  attempted?: number;
+}
+
 interface DerivsPayload {
   funding?: {
     sym: string;
@@ -289,6 +303,53 @@ export const TOOLS: ToolSpec[] = [
         source: "Uniswap v3 subgraph on The Graph, pinned deployment",
         interpretationNotes:
           "Values ending in USD are already in dollars. Liquidity is not depth: totalValueLockedUSD counts both sides of a pool and most of it sits away from the current price.",
+      };
+    },
+  },
+  {
+    name: "compare_protocols",
+    description:
+      "Compare DeFi protocols on the same footing: total value locked, cumulative supply side revenue, and cumulative unique users, across lending markets, DEXes and staking protocols. Use it for questions that put protocols side by side, ask which is largest, or ask how one compares to another. It answers about protocols, not about tokens or prices.",
+    parameters: {
+      type: "object",
+      properties: {
+        protocol: {
+          type: ["string", "null"],
+          description:
+            "Name to filter to, such as Aave or Curve. Null or omitted returns every protocol.",
+        },
+      },
+    },
+    async run(args, origin) {
+      const d = await readRoute<StandardsPayload>(origin, "/api/standards");
+      if (!d?.rows?.length) return { error: "The standardized schema read is unavailable." };
+
+      const want = typeof args.protocol === "string" ? args.protocol.toLowerCase() : null;
+      const rows = d.rows
+        .filter((r) => !r.error)
+        .filter((r) => !want || r.label.toLowerCase().includes(want) || (r.name ?? "").toLowerCase().includes(want))
+        .sort((a, b) => (b.tvlUsd ?? 0) - (a.tvlUsd ?? 0))
+        .map((r) => ({
+          protocol: r.label,
+          category: r.type,
+          totalValueLocked: usd(r.tvlUsd),
+          cumulativeSupplySideRevenue: usd(r.revenueUsd),
+          cumulativeUniqueUsers: r.users,
+        }));
+
+      if (!rows.length) {
+        return {
+          error: `No protocol here matches ${args.protocol}. Covered: ${d.rows.map((r) => r.label).join(", ")}.`,
+        };
+      }
+
+      return {
+        protocols: rows,
+        answeredOf: `${d.answered} of ${d.attempted}`,
+        howItIsPossible:
+          "One GraphQL query, sent unchanged to every protocol below, because they publish a standardized subgraph schema on The Graph rather than each their own.",
+        interpretationNotes:
+          "Total value locked and revenue are the protocol's own figures under a shared schema, so they are comparable across protocols in a way that separately defined metrics are not. Cumulative means since inception, not over a window, so a long lived protocol will lead on users and revenue regardless of its current size. These are protocol wide totals on a daily snapshot, not a live tape, so never present them as a current market reading.",
       };
     },
   },
@@ -499,6 +560,7 @@ const PICKING = `You answer crypto market questions for a terminal by calling it
 - Selling pressure means coins arriving, positioning and liquidations. A stablecoin inflow is the other side of that picture, not an answer to it.
 - Asked why something moved or what happens next, also read market_coverage.
 - The dislocation queue ranks what moved far from its own reference. It never holds a level. For a level, call the tool that has it.
+- A question comparing protocols, or asking which is largest, or how one stacks against another, is compare_protocols. It answers about protocols rather than tokens, and it is the only tool that spans many of them at once.
 - You cover what this terminal measures: prices, funding, open interest, options, exchange flow, onchain liquidity and ownership. Asked to explain a concept or how a protocol works, call nothing.
 - When you have called every tool the question needs, reply with the single word DONE and nothing else. Never write the answer here. Another turn writes it, and anything you write in this one is discarded.`;
 
@@ -799,15 +861,34 @@ const OUT_OF_SCOPE =
  * completion and a completion that is really a scratchpad both need another
  * attempt rather than a different message, so they are judged in one place.
  */
+/** Why the last synthesis produced nothing, for the note and the log. */
+let lastRejection: string | null = null;
+
 function usable(reply: ChatMessage | null): string | null {
-  const raw = reply?.content ? plain(reply.content) : null;
-  if (!raw) return null;
+  if (!reply) {
+    lastRejection = "no reply";
+    return null;
+  }
+  const raw = reply.content ? plain(reply.content) : null;
+  if (!raw) {
+    // A completion with no content at all. Worth naming separately: it means
+    // the provider answered and said nothing, which is a different failure
+    // from one whose answer was rejected here.
+    lastRejection = reply.tool_calls?.length ? "answered with a tool call" : "empty completion";
+    return null;
+  }
   if (leaked(raw)) {
+    lastRejection = "scratchpad";
     console.error("[ask] discarded a leaked reasoning answer");
     return null;
   }
   const out = tighten(raw);
-  return out.trim() ? out : null;
+  if (!out.trim()) {
+    lastRejection = "empty after tightening";
+    return null;
+  }
+  lastRejection = null;
+  return out;
 }
 
 /** Sentences, counted crudely. Decimals in "$1.4m" must not count as ends. */
@@ -913,7 +994,14 @@ async function compress(draft: string, session: Session): Promise<string | null>
  */
 function leaked(text: string): boolean {
   const head = text.slice(0, 400).toLowerCase();
-  if (TOOLS.some((t) => text.includes(t.name))) return true;
+  // Only the tool names that cannot also be prose.
+  //
+  // "derivatives" is a tool name and an ordinary English word, so a correct
+  // answer about the derivatives board was discarded as a scratchpad. On the
+  // question this terminal is built to answer that was one attempt in three.
+  // A snake_case name has no such ambiguity: nothing writes exchange_flow in a
+  // sentence unless it is reading its own plumbing aloud.
+  if (TOOLS.some((t) => t.name.includes("_") && text.includes(t.name))) return true;
   return /\b(let me|i need to|i'll structure|following the rules|now i need|my answer should)\b/.test(head);
 }
 
@@ -1219,7 +1307,12 @@ export async function ask(question: string, origin: string, focus?: string): Pro
       ok: false,
       answer: null,
       used,
-      note: lastError ?? "The desks answered but the summary did not. Ask again.",
+      // The reason is named. "The summary did not" was true and useless: it
+      // could not tell an exhausted quota from a model that answered with a
+      // tool call, and those need different fixes.
+      note:
+        lastError ??
+        `The desks answered but the summary did not (${lastRejection ?? "unknown"}). Ask again.`,
     };
   }
   // The prompt asks for two to four sentences and the model agrees, then opens

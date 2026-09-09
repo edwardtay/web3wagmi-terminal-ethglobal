@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { YieldPool, YieldsPayload } from "@/app/api/yields/route";
-import { AsOf, InfoHint, Loading, Panel, Segmented, TableWrap, Unavailable } from "@/components/ui";
+import { AsOf, InfoHint, Loading, Panel, Segmented, TableWrap, Th, Unavailable} from "@/components/ui";
 import { pctPlain, usdCompact, NA } from "@/lib/format";
 import { useApi } from "@/lib/useApi";
 
@@ -221,24 +221,12 @@ export function YieldScanner() {
               <thead>
                 <tr>
                   <th scope="col">Pool</th>
-                  <th scope="col" className="num" title="Total value locked in the pool, in US dollars">
-                    TVL
-                  </th>
-                  <th scope="col" className="num" title="Headline annual percentage yield projected by DefiLlama">
-                    APY
-                  </th>
-                  <th scope="col" className="num" title="Fee revenue APY versus token emission APY">
-                    Base / Reward
-                  </th>
-                  <th scope="col" className="num" title="Current APY minus its 30 day mean, in percentage points">
-                    vs 30d
-                  </th>
-                  <th scope="col" title="Impermanent loss risk, asset exposure, and sigma (standard deviation of the APY series)">
-                    Risk
-                  </th>
-                  <th scope="col" title="DefiLlama's machine learned call on where this APY goes next, with its confidence">
-                    Outlook
-                  </th>
+                  <Th label="TVL" hint="Total value locked in the pool, in US dollars" num />
+                  <Th label="APY" hint="Headline annual percentage yield projected by DefiLlama" num />
+                  <Th label="Base / Reward" hint="Fee revenue APY versus token emission APY" num />
+                  <Th label="vs 30d" hint="Current APY minus its 30 day mean, in percentage points" num />
+                  <Th label="Risk" hint="Impermanent loss risk, asset exposure, and sigma (standard deviation of the APY series)" />
+                  <Th label="Outlook" hint="DefiLlama's machine learned call on where this APY goes next, with its confidence" />
                 </tr>
               </thead>
               <tbody>
@@ -314,7 +302,12 @@ function Row({ p, maxApy }: { p: YieldPool; maxApy: number }) {
           {projectName(p.project)} <span className="text-[var(--text3)]">·</span> {p.chain}
         </div>
         <div className="mt-1 flex flex-wrap gap-1">
-          {p.stable && <Flag text="stable" color="var(--cyan)" title="Stablecoin denominated pool" />}
+          {/* "stablecoin", not "stable". The other flag on this row is
+              "unstable", and the two describe different subjects: what the pool
+              holds against how its yield behaves. Side by side as stable and
+              unstable they read as a contradiction, which is a fair thing for a
+              reader to conclude from those two words. */}
+          {p.stable && <Flag text="stablecoin" color="var(--cyan)" title="The pool is denominated in stablecoins" />}
           {emissions && (
             <Flag
               text="emissions"
@@ -323,7 +316,7 @@ function Row({ p, maxApy }: { p: YieldPool; maxApy: number }) {
             />
           )}
           {hot && (
-            <Flag text="unstable" color="var(--neg)" title={`Sigma ${p.sigma?.toFixed(2)}: the APY series swings widely`} />
+            <Flag text="apy swings" color="var(--neg)" title={`Sigma ${p.sigma?.toFixed(2)}: the APY series swings widely, so the headline rate is not what you should expect to earn`} />
           )}
           {p.outlier && <Flag text="outlier" color="var(--violet)" title="DefiLlama marks this pool's APY as an outlier" />}
           {young && <Flag text={`${p.days}d`} color="var(--text3)" title="Less than a month of history, so the averages are thin" />}
@@ -366,7 +359,16 @@ function Row({ p, maxApy }: { p: YieldPool; maxApy: number }) {
           <span className="text-[10px] text-[var(--text3)]">{NA}</span>
         ) : (
           <div className="whitespace-nowrap text-[10px] leading-tight">
-            <span style={{ color: p.outlook === "Down" ? "var(--neg)" : "var(--pos)" }}>{p.outlook}</span>
+            {/* An arrow rather than the word. The column is called Outlook and
+                every row in it says Down or Up, so the word carries no
+                information the direction and the colour do not already give,
+                and it crowded the probability beside it. */}
+            <span
+              aria-label={p.outlook === "Down" ? "falling" : "rising"}
+              style={{ color: p.outlook === "Down" ? "var(--neg)" : "var(--pos)" }}
+            >
+              {p.outlook === "Down" ? "\u25bc" : "\u25b2"}
+            </span>
             {p.outlookProb != null && (
               <span className="text-[var(--text3)]"> {p.outlookProb.toFixed(0)}%</span>
             )}

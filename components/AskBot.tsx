@@ -32,6 +32,8 @@ const DESK_LABEL: Record<string, string> = {
   exchange_flow: "exchange flow",
   derivatives: "funding",
   query_uniswap_subgraph: "uniswap",
+  compare_protocols: "protocols",
+  market_coverage: "coverage",
 };
 
 /** Shown once, so the bubble is not an empty box asking to be guessed at. */
@@ -39,7 +41,38 @@ const OPENERS = [
   "What is unusual right now?",
   "Is there selling pressure building?",
   "How concentrated is WBTC ownership?",
+  "How does Aave compare to Compound?",
 ];
+
+/**
+ * An answer, broken where its own sentences break.
+ *
+ * The prose is deliberately plain: the model is forbidden headings, bullets and
+ * line breaks, because when it was allowed them it produced a desk by desk
+ * report with a preamble instead of an answer. That fix left a different
+ * problem, which is that four sentences of dense numbers arrive as one block
+ * and the finding is buried in the middle of it.
+ *
+ * The structure is added here rather than asked for. The first sentence is the
+ * conclusion, because the prompt requires the lead to be the thing that matters
+ * most, so it is set apart. The rest gets spacing between sentences, which is
+ * the difference between a paragraph a reader scans and one they skip.
+ */
+function Answer({ text }: { text: string }) {
+  const parts = text.split(/(?<=[.!?])\s+(?=[A-Z(])/).filter((s) => s.trim());
+  if (parts.length < 2) return <>{text}</>;
+  const [lead, ...rest] = parts;
+  return (
+    <>
+      <p className="font-semibold text-[var(--text)]">{lead}</p>
+      {rest.map((s, i) => (
+        <p key={i} className="mt-1.5 text-[var(--text2)]">
+          {s}
+        </p>
+      ))}
+    </>
+  );
+}
 
 export function AskBot() {
   const [mounted, setMounted] = useState(false);
@@ -141,7 +174,7 @@ export function AskBot() {
                   }
                   style={{ overflowWrap: "anywhere" }}
                 >
-                  {t.text}
+                  {t.role === "bot" ? <Answer text={t.text} /> : t.text}
                 </div>
                 {t.desks && t.desks.length > 0 && (
                   <p className="mt-1 flex flex-wrap items-center gap-1 font-mono text-[9px] text-[var(--text3)]">

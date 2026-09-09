@@ -1,7 +1,7 @@
 import "server-only";
 import { getJson } from "./http";
 
-// The Graph Token API. Indexed token balances, transfers and holders across
+// The Graph Token API. Indexed token balances and holders across
 // nine EVM networks, plus Hyperliquid perp data, read server-side like every
 // other upstream here.
 //
@@ -92,7 +92,7 @@ export const BUDGET = {
  * Rows one request may return, enforced by the plan at the proxy rather than by
  * the API. `GET /openapi` advertises `limit` up to 1000, and anything over this
  * answers 403 `Parameter 'limit' exceeds maximum of 10 items` on every endpoint,
- * balances, historical, transfers and holders alike.
+ * balances, historical and holders alike.
  *
  * This shapes the whole desk. A seven day hourly series is 168 points, so it
  * cannot be one call. Pick the coarsest interval that answers the question
@@ -273,60 +273,6 @@ export function balancesHistoricalNative(
   );
 }
 
-// ---- transfers -----------------------------------------------------------
-
-/** One row of `GET /v1/evm/transfers`. */
-export interface Transfer {
-  block_num: number;
-  datetime: string;
-  timestamp: number;
-  transaction_id: string;
-  contract: string;
-  from: string;
-  to: string;
-  amount: string;
-  value: number;
-  decimals: number | null;
-  symbol: string | null;
-  network: string;
-}
-
-/**
- * Transfers in one direction for one address.
- *
- * `from_address` and `to_address` each take a single address, not a list, so
- * the gross inflow and outflow split costs two calls per wallet per network.
- * That is too expensive to run on every refresh across fifteen wallets, which
- * is why the always-on netflow series comes from `balancesHistorical` and this
- * is reserved for an on-demand drill-in on one venue.
- */
-export function transfers(
-  network: Network,
-  opts: GraphOptions & {
-    contract?: string;
-    fromAddress?: string;
-    toAddress?: string;
-    startTime?: Date;
-    endTime?: Date;
-    limit?: number;
-  } = {}
-): Promise<Transfer[] | null> {
-  const { contract, fromAddress, toAddress, startTime, endTime, limit = MAX_ITEMS, ...rest } = opts;
-  return graphGet<Transfer>(
-    "/v1/evm/transfers",
-    {
-      network,
-      contract,
-      from_address: fromAddress,
-      to_address: toAddress,
-      start_time: startTime ? sqlTime(startTime) : undefined,
-      end_time: endTime ? sqlTime(endTime) : undefined,
-      limit,
-    },
-    rest
-  );
-}
-
 // ---- holders -------------------------------------------------------------
 
 /** One row of `GET /v1/evm/holders`. */
@@ -412,6 +358,36 @@ export async function tokenInfo(
 }
 
 // ---- Hyperliquid ---------------------------------------------------------
+
+/** One row of `GET /v1/hyperliquid/platform`. */
+export interface HyperliquidPlatform {
+  timestamp: string;
+  volume: number;
+  buy_volume: number;
+  sell_volume: number;
+  transactions: number;
+  active_coins: number;
+  total_fees: number;
+  liquidations_volume: number;
+  liquidations_count: number;
+}
+
+/**
+ * The whole onchain perp venue in one row.
+ *
+ * Everything else this terminal reads about Hyperliquid is per asset. This is
+ * the venue itself, and it carries the one thing a per-asset read cannot give:
+ * buy volume against sell volume across every market at once, which is an order
+ * flow imbalance for the venue rather than for a coin.
+ *
+ * One request for the whole reading, so it costs nothing to keep.
+ */
+export function hyperliquidPlatform(
+  opts: GraphOptions & { interval?: string } = {}
+): Promise<HyperliquidPlatform[] | null> {
+  const { interval = "1d", ...rest } = opts;
+  return graphGet<HyperliquidPlatform>("/v1/hyperliquid/platform", { interval, limit: 1 }, rest);
+}
 
 /** One row of `GET /v1/hyperliquid/markets/oi`. */
 export interface HyperliquidOi {

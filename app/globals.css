@@ -458,3 +458,41 @@ h3.panel-h {
   width: 1px;
   background: var(--border);
 }
+
+/* Freeze the rank and the name together.
+   The pin rule below keys off the first column, and a table that leads with a
+   rank has its identity in the second: scrolling the chain board sideways left
+   a column of bare numbers pinned against rows whose names had gone. Opt in
+   with `tbl-pin2` on the table, which fixes the rank column's width so the
+   name has a known offset to sit at. */
+.tbl-pin2 td:first-child,
+.tbl-pin2 th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  width: 44px;
+  min-width: 44px;
+  background: var(--surface);
+}
+.tbl-pin2 th:first-child { z-index: 3; background: var(--surface2); }
+.tbl-pin2 td:nth-child(2),
+.tbl-pin2 th:nth-child(2) {
+  position: sticky;
+  left: 44px;
+  z-index: 2;
+  background: var(--surface);
+}
+.tbl-pin2 th:nth-child(2) { z-index: 3; background: var(--surface2); }
+.tbl-pin2 tbody tr:hover td:first-child,
+.tbl-pin2 tbody tr:hover td:nth-child(2) { background: var(--surface2); }
+/* The edge goes on the second column, which is where the pinned block ends. */
+.tbl-pin2 td:nth-child(2)::after,
+.tbl-pin2 th:nth-child(2)::after {
+  content: "";
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 1px;
+  background: var(--border);
+}
+.tbl-pin2 td:first-child::after,
+.tbl-pin2 th:first-child::after { content: none; }

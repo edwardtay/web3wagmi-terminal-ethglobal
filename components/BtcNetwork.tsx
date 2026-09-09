@@ -1,7 +1,7 @@
 "use client";
 
 import { useApi } from "@/lib/useApi";
-import { Panel, Loading, Unavailable, AsOf, ChangeChip } from "@/components/ui";
+import { AsOf, ChangeChip, Loading, Panel, TokenIcon, Unavailable } from "@/components/ui";
 import { compact, num, usd, duration, NA } from "@/lib/format";
 
 // Bitcoin transaction cost and the state of the network behind it: what the
@@ -63,7 +63,12 @@ export function BtcNetwork() {
 
   return (
     <Panel
-      title="Bitcoin network"
+      title={
+        <span className="inline-flex items-center gap-1.5">
+          <TokenIcon sym="BTC" size={14} />
+          Bitcoin network
+        </span>
+      }
       right={<AsOf iso={data?.asOf} staleMs={15 * 60 * 1000} />}
     >
       {loading ? (
@@ -78,24 +83,31 @@ export function BtcNetwork() {
             <span>cost shown for a {b.vbytes} vB transaction at {usd(b.btcUsd)}/BTC</span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+          {/* One row per tier, not a grid of boxes.
+              These are four points on a single scale, cheapest to fastest, and
+              a two by two grid of cards broke that order into a shape with no
+              reading direction: the bars could not be compared because they sat
+              in different columns, which is the only thing a bar is for. */}
+          <div className="divide-y divide-[var(--border2)] rounded-lg border border-[var(--border)]">
             {tiers.map((t) => (
-              <div key={t.label} className="rounded-lg border border-[var(--border)] bg-[var(--bg2)] p-2.5">
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text2)]">{t.label}</div>
-                <div className="font-mono text-[10px] text-[var(--text3)]">{t.sub}</div>
-                <div className="mt-1.5 flex items-baseline gap-1">
-                  <span className="whitespace-nowrap font-mono text-lg font-bold" style={{ color: t.color }}>
+              <div key={t.label} className="flex items-center gap-3 px-2.5 py-2">
+                <div className="w-[92px] shrink-0">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text2)]">{t.label}</div>
+                  <div className="font-mono text-[10px] text-[var(--text3)]">{t.sub}</div>
+                </div>
+                <div className="flex w-[74px] shrink-0 items-baseline gap-1">
+                  <span className="whitespace-nowrap font-mono text-[15px] font-bold" style={{ color: t.color }}>
                     {num(t.rate, 0)}
                   </span>
                   <span className="font-mono text-[10px] text-[var(--text3)]">sat/vB</span>
                 </div>
-                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface2)]">
+                <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[var(--surface2)]">
                   <div
                     className="h-full rounded-full"
                     style={{ width: `${maxRate > 0 ? Math.max(2, (t.rate / maxRate) * 100) : 0}%`, background: t.color }}
                   />
                 </div>
-                <div className="mt-1.5 whitespace-nowrap font-mono text-[12px] font-semibold text-[var(--text)]">
+                <div className="w-[62px] shrink-0 whitespace-nowrap text-right font-mono text-[12px] font-semibold text-[var(--text)]">
                   {fiat(feeUsd(t.rate))}
                 </div>
               </div>

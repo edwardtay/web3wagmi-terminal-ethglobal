@@ -1,5 +1,5 @@
 import { getJson, postJson, jsonResponse } from "@/lib/http";
-import { hyperliquidLiquidations, hyperliquidOi } from "@/lib/graph";
+import { hyperliquidLiquidations, hyperliquidOi, hyperliquidPlatform } from "@/lib/graph";
 import { venueOpenInterest } from "@/lib/perps";
 import {
   FAPI,
@@ -230,6 +230,11 @@ export async function GET() {
   // same as a narrow one.
   const venueOi = await venueOpenInterest(revalidate).catch(() => new Map());
 
+  // The venue as a whole, which no per-asset read gives. One request, held for
+  // an hour: it is a daily bar, so a tighter window buys nothing.
+  const platformRows = await hyperliquidPlatform({ interval: "1d", revalidate: 3600 }).catch(() => null);
+  const platform = platformRows?.[0] ?? null;
+
   const funding: FundingRow[] = [];
   const oi: OiRow[] = [];
 
@@ -351,6 +356,24 @@ export async function GET() {
       ok: funding.length > 0 || oi.length > 0,
       asOf: new Date().toISOString(),
       hyperliquid: hlFunding.size > 0,
+      /**
+       * The onchain perp venue as a whole, over the last daily bar.
+       *
+       * Buy against sell volume is the reading worth having: every other
+       * Hyperliquid number here is per asset, and an imbalance across every
+       * market at once is a different thing from one crowded coin.
+       */
+      hlPlatform: platform
+        ? {
+            volumeUsd: platform.volume,
+            buyUsd: platform.buy_volume,
+            sellUsd: platform.sell_volume,
+            transactions: platform.transactions,
+            activeCoins: platform.active_coins,
+            liquidationsUsd: platform.liquidations_volume,
+            liquidationsCount: platform.liquidations_count,
+          }
+        : null,
       /**
        * Largest Hyperliquid liquidations of the last 24h, indexed.
        *

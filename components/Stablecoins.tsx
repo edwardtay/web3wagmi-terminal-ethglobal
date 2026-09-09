@@ -2,19 +2,10 @@
 
 import { useMemo, useState } from "react";
 import type { StablecoinsPayload, StableRow } from "@/app/api/stablecoins/route";
-import {
-  AsOf,
-  ChangeChip,
-  Loading,
-  Panel,
-  Section,
-  Segmented,
-  Sparkline,
-  TableWrap,
-  Unavailable,
-} from "@/components/ui";
+import { AsOf, ChangeChip, Loading, Panel, Section, Segmented, Sparkline, TableWrap, Th, Unavailable} from "@/components/ui";
 import { pctPlain, signColor, usd, usdCompact, NA } from "@/lib/format";
 import { useApi } from "@/lib/useApi";
+import { brandColor } from "@/lib/brandColors";
 
 
 
@@ -29,6 +20,7 @@ const TOP_ISSUERS = 6;
  * Seven fills for the share bar, theme tokens only, blended toward the surface
  * for the tail so the ramp stays legible in both themes.
  */
+/** Fallback palette, for issuers with no brand colour on file. */
 const SHARE_COLORS = [
   "var(--accent)",
   "var(--cyan)",
@@ -101,7 +93,9 @@ function ShareBar({ rows, total }: { rows: StableRow[]; total: number }) {
       name: r.name,
       share: r.share,
       value: r.circulating,
-      color: SHARE_COLORS[i],
+      // The issuer's own colour where we know it. USDT green and USDC blue are
+      // what a reader already has in their head for these two.
+      color: brandColor(r.symbol) ?? brandColor(r.name) ?? SHARE_COLORS[i % SHARE_COLORS.length],
     })),
     {
       key: "other",
@@ -296,24 +290,12 @@ export function Stablecoins() {
               <thead>
                 <tr>
                   <th scope="col">Asset</th>
-                  <th scope="col" className="num" title="Circulating supply in US dollars">
-                    Supply
-                  </th>
-                  <th scope="col" className="num" title="Supply change over the last day, in dollars and percent">
-                    1d
-                  </th>
-                  <th scope="col" className="num" title="Supply change over the last 7 days, in dollars and percent">
-                    7d
-                  </th>
-                  <th scope="col" className="num" title="Supply change over the last 30 days, in dollars and percent">
-                    30d
-                  </th>
-                  <th scope="col" className="num" title="Share of all USD-pegged stablecoin supply">
-                    Share
-                  </th>
-                  <th scope="col" title="Chains holding the largest part of this asset's supply">
-                    Top chains
-                  </th>
+                  <Th label="Supply" hint="Circulating supply in US dollars" num />
+                  <Th label="1d" hint="Supply change over the last day, in dollars and percent" num />
+                  <Th label="7d" hint="Supply change over the last 7 days, in dollars and percent" num />
+                  <Th label="30d" hint="Supply change over the last 30 days, in dollars and percent" num />
+                  <Th label="Share" hint="Share of all USD-pegged stablecoin supply" num />
+                  <Th label="Top chains" hint="Chains holding the largest part of this asset's supply" />
                 </tr>
               </thead>
               <tbody>
@@ -368,7 +350,10 @@ export function Stablecoins() {
             </div>
           </Panel>
 
-          <Panel title="Peg monitor">
+          <Panel
+            title="Peg monitor"
+            hint={`Sorted by distance from the peg, with the tokens that are meant to sit above it kept underneath: a tokenised treasury accrues interest into its price, so it reads permanently high by design. Anything past ${DEPEG_BPS} bps is highlighted and worth checking at the underlying venue before acting on it. One basis point is 0.01%, and prices are shown to four decimals so the deviation beside them reconciles.`}
+          >
             {pegs.length === 0 ? (
               <div className="py-6 text-center font-mono text-[11px] text-[var(--text3)]">
                 No priced asset in this set right now.
@@ -378,12 +363,8 @@ export function Stablecoins() {
                 <thead>
                   <tr>
                     <th scope="col">Asset</th>
-                    <th scope="col" className="num" title="Aggregate mark across the venues DefiLlama reads">
-                      Price
-                    </th>
-                    <th scope="col" className="num" title="Distance from $1.00 in basis points, one bps is 0.01%">
-                      Deviation
-                    </th>
+                    <Th label="Price" hint="Aggregate mark across the venues DefiLlama reads" num />
+                    <Th label="Deviation" hint="Distance from $1.00 in basis points, one bps is 0.01%" num />
                     <th scope="col" className="num">
                       Supply
                     </th>
@@ -429,10 +410,6 @@ export function Stablecoins() {
                 </tbody>
               </TableWrap>
             )}
-            <div className="mt-2 text-[11px] leading-snug text-[var(--text2)]">
-              Sorted by distance from the peg. Anything past {DEPEG_BPS} bps is highlighted and worth a look at the
-              underlying venue before acting on it.
-            </div>
           </Panel>
         </div>
       )}

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useApi } from "@/lib/useApi";
 import { Composites } from "./Composites";
+import { brandColor } from "@/lib/brandColors";
 import { AsOf, ChangeChip, Loading, LivePill, Meter, Panel, Section, Sparkline, Unavailable } from "@/components/ui";
 import { pct, pctPlain, price, signColor, usdCompact } from "@/lib/format";
 import type { SnapshotPayload } from "@/app/api/snapshot/route";
@@ -20,6 +21,99 @@ function fngZone(v: number): { label: string; color: string } {
 }
 
 
+
+/**
+ * Fear and Greed as a dial.
+ *
+ * It was a horizontal meter with yesterday and last week printed underneath as
+ * two loose numbers. A dial is the right shape for this one reading: the index
+ * is a position on a fixed nought to a hundred scale with named zones, which is
+ * exactly what a car's instrument shows, and the zones can be coloured on the
+ * arc itself rather than described in a legend.
+ *
+ * Yesterday and last week become ticks on the same arc. As figures underneath
+ * they were two numbers a reader had to hold in their head to compare; on the
+ * dial the comparison is the distance between the needle and the tick, which is
+ * the comparison being asked for.
+ */
+const FNG_ZONES: { to: number; color: string; label: string }[] = [
+  { to: 25, color: "var(--neg)", label: "Extreme fear" },
+  { to: 45, color: "color-mix(in srgb, var(--neg) 55%, var(--surface))", label: "Fear" },
+  { to: 55, color: "var(--gold)", label: "Neutral" },
+  { to: 74, color: "color-mix(in srgb, var(--pos) 55%, var(--surface))", label: "Greed" },
+  { to: 100, color: "var(--pos)", label: "Extreme greed" },
+];
+
+function FngGauge({ value, yesterday, lastWeek }: { value: number; yesterday?: number | null; lastWeek?: number | null }) {
+  const W = 220;
+  const H = 124;
+  const cx = W / 2;
+  const cy = 112;
+  const r = 86;
+  // Nought sits at nine o'clock and a hundred at three, so the needle sweeps
+  // the way a reader expects a dial to run.
+  const angle = (v: number) => Math.PI * (1 - Math.min(100, Math.max(0, v)) / 100);
+  const at = (v: number, radius: number) => [cx + radius * Math.cos(angle(v)), cy - radius * Math.sin(angle(v))];
+
+  const arc = (from: number, to: number) => {
+    const [x1, y1] = at(from, r);
+    const [x2, y2] = at(to, r);
+    return `M ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2}`;
+  };
+
+  const [nx, ny] = at(value, r - 16);
+  const zone = fngZone(value);
+
+  const tick = (v: number | null | undefined, key: string, label: string) => {
+    if (v == null || !Number.isFinite(v)) return null;
+    const [x1, y1] = at(v, r - 9);
+    const [x2, y2] = at(v, r + 7);
+    return (
+      <line key={key} x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--text3)" strokeWidth="1.5">
+        <title>{`${label}: ${v}`}</title>
+      </line>
+    );
+  };
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ height: "auto" }} role="img"
+           aria-label={`Fear and Greed index ${value}, ${zone.label}`}>
+        {FNG_ZONES.map((z, i) => (
+          <path
+            key={z.label}
+            d={arc(i === 0 ? 0 : FNG_ZONES[i - 1].to, z.to)}
+            fill="none"
+            stroke={z.color}
+            strokeWidth="11"
+            strokeLinecap="butt"
+          />
+        ))}
+        {tick(yesterday, "y", "Yesterday")}
+        {tick(lastWeek, "w", "7 days ago")}
+        <line x1={cx} y1={cy} x2={nx} y2={ny} stroke="var(--text)" strokeWidth="2.5" strokeLinecap="round" />
+        <circle cx={cx} cy={cy} r="4.5" fill="var(--text)" />
+        <text x={cx} y={cy - 30} textAnchor="middle" className="font-mono"
+              style={{ fontSize: 26, fontWeight: 700, fill: zone.color }}>
+          {value}
+        </text>
+        <text x={cx} y={cy - 14} textAnchor="middle"
+              style={{ fontSize: 10, fill: "var(--text3)", textTransform: "uppercase" }}>
+          {zone.label}
+        </text>
+      </svg>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] text-[var(--text3)]">
+        <span>0 extreme fear</span>
+        <span className="ml-auto">100 extreme greed</span>
+      </div>
+      {(yesterday != null || lastWeek != null) && (
+        <div className="mt-1 font-mono text-[10px] text-[var(--text3)]">
+          ticks: yesterday {yesterday ?? "n/a"}, 7 days ago {lastWeek ?? "n/a"}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ------------------------------------------------------------------ tape -- */
 
@@ -135,7 +229,10 @@ export function Snapshot() {
       id="snapshot"
       right={
         <>
-          <LivePill live={!failed} label={failed ? "stale" : "30s"} />
+          {/* "live", not "30s". The stamp beside it already says 29s ago, and
+              two similar numbers next to each other read as the same fact
+              stated twice rather than as a cadence and an age. */}
+          <LivePill live={!failed} label={failed ? "stale" : "live"} />
           <AsOf iso={data?.asOf} />
         </>
       }
@@ -235,20 +332,25 @@ function GlobalRow({ data }: { data: SnapshotPayload }) {
             </div>
             <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface2)]">
               <div className="flex h-full">
-                <div style={{ width: `${g.btcDom}%`, background: "var(--btc)" }} />
-                <div style={{ width: `${g.ethDom}%`, background: "var(--eth)" }} />
+                {/* The projects' own marks, as every other share bar here now
+                    uses. The --btc and --eth tokens are darkened for legibility
+                    as text on a light page, which is right for a number and
+                    wrong for a fill: a bar is the one place the actual brand
+                    colour carries information. */}
+                <div style={{ width: `${g.btcDom}%`, background: brandColor("bitcoin") ?? "var(--btc)" }} />
+                <div style={{ width: `${g.ethDom}%`, background: brandColor("ethereum") ?? "var(--eth)" }} />
               </div>
             </div>
             {/* The bar already shows the split, so it needs a key rather than a
                 sentence describing it. */}
             <dl className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px]">
               <div className="flex items-center gap-1">
-                <span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: "var(--btc)" }} />
+                <span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: brandColor("bitcoin") ?? "var(--btc)" }} />
                 <dt className="text-[var(--text3)]">BTC</dt>
                 <dd className="font-semibold text-[var(--text2)]">{pctPlain(g.btcDom, 1)}</dd>
               </div>
               <div className="flex items-center gap-1">
-                <span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: "var(--eth)" }} />
+                <span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: brandColor("ethereum") ?? "var(--eth)" }} />
                 <dt className="text-[var(--text3)]">ETH</dt>
                 <dd className="font-semibold text-[var(--text2)]">{pctPlain(g.ethDom, 1)}</dd>
               </div>
@@ -271,28 +373,13 @@ function GlobalRow({ data }: { data: SnapshotPayload }) {
       >
         {f ? (
           <>
-            <Meter label={fngZone(f.value).label} score={f.value} color={fngZone(f.value).color} />
+            <FngGauge value={f.value} yesterday={f.yesterday} lastWeek={f.lastWeek} />
             <div className="mt-2 [&>svg]:w-full">
               <Sparkline data={f.series.map((p) => p.v)} width={220} height={30} stroke="var(--cyan)" />
               <div className="mt-0.5 font-mono text-[10px] uppercase tracking-wide text-[var(--text3)]">
                 30 day series
               </div>
             </div>
-            {/* Label above, figure below, matching the other snapshot cards.
-                Run together on one line these three read as a sentence and have
-                to be parsed; stacked they can be scanned. "30d series" was also
-                a caption for the chart pretending to be a data point, so it has
-                moved onto the chart. */}
-            <dl className="mt-1.5 flex flex-wrap gap-x-5 gap-y-1 font-mono text-[10px]">
-              <div>
-                <dt className="uppercase tracking-wide text-[var(--text3)]">yesterday</dt>
-                <dd className="font-semibold text-[var(--text2)]">{f.yesterday ?? "n/a"}</dd>
-              </div>
-              <div>
-                <dt className="uppercase tracking-wide text-[var(--text3)]">7 days ago</dt>
-                <dd className="font-semibold text-[var(--text2)]">{f.lastWeek ?? "n/a"}</dd>
-              </div>
-            </dl>
           </>
         ) : (
           <Unavailable what="Fear and Greed" />

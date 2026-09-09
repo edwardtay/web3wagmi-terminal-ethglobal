@@ -148,7 +148,11 @@ export function SignalTape() {
                       <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
                         <span
                           className="pill shrink-0 px-1.5 py-0 text-[9px] uppercase"
-                          style={{ color: KIND_COLOR[s.kind] }}
+                          style={{
+                            color: KIND_COLOR[s.kind],
+                            borderColor: KIND_COLOR[s.kind],
+                            background: `color-mix(in srgb, ${KIND_COLOR[s.kind]} 12%, transparent)`,
+                          }}
                         >
                           {KIND_LABEL[s.kind]}
                         </span>
@@ -156,9 +160,16 @@ export function SignalTape() {
                           {s.headline}
                         </span>
                         {s.bias !== "neutral" && (
+                          /* A pill, like the kind badge beside it. These are the
+                             same class of thing, a label on the row, and one of
+                             them rendering as bare coloured text read as part of
+                             the headline rather than as a tag. */
                           <span
-                            className="shrink-0 font-mono text-[10px] font-bold uppercase"
-                            style={{ color: s.bias === "long" ? "var(--pos)" : "var(--neg)" }}
+                            className="pill shrink-0 border-transparent px-1.5 py-0 text-[9px] uppercase"
+                            style={{
+                              color: s.bias === "long" ? "var(--pos)" : "var(--neg)",
+                              background: s.bias === "long" ? "var(--pos-soft)" : "var(--neg-soft)",
+                            }}
                             title={`Reads ${s.bias} on this signal alone`}
                           >
                             {s.bias}
@@ -166,12 +177,16 @@ export function SignalTape() {
                         )}
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
+                        {/* Severity is the stripe down the left of the row and
+                            was also a pill, which put three shouting tags on a
+                            row that has two facts. The stripe already ranks it,
+                            the rows are already ordered by it, and the band is
+                            in the title where the number lives. */}
                         <span
-                          className="font-mono text-[10px] font-bold uppercase tracking-wide"
-                          style={{ color: severityColor(s.severity) }}
+                          className="shrink-0 font-mono text-[10px] text-[var(--text3)]"
                           title={`How far past its own trigger this reading sits, scored ${s.severity} of 100. A ranking device for ordering the queue, not a measurement of the market.`}
                         >
-                          {severityBand(s.severity)}
+                          {severityBand(s.severity).toLowerCase()}
                         </span>
                         <button
                           onClick={() => setExpanded(open ? null : s.id)}

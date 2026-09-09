@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useApi } from "@/lib/useApi";
-import { Section, Panel, Loading, Unavailable, AsOf, Segmented, TableWrap, Sparkline, TokenIcon } from "./ui";
+import { Section, Panel, Loading, Unavailable, AsOf, Segmented, TableWrap, Sparkline, TokenIcon, Th } from "./ui";
 import { usdCompact, compact, num, signColor } from "@/lib/format";
 
 // Coins moving onto an exchange can be sold. Coins leaving cannot. That is the
@@ -202,7 +202,17 @@ export function ExchangeNetflow() {
     <Section title="Exchange netflow" id="netflow" hint="A sample of labelled Ethereum wallets, not total exchange reserves." right={controls}>
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         {/* ------------------------------------------------- the two legs -- */}
-        <Panel title={`Net flow, ${WINDOW_LABEL[win]}`} className="lg:col-span-2">
+        <Panel
+          title={`Net flow, ${WINDOW_LABEL[win]}`}
+          className="lg:col-span-2"
+          hint="Colour follows the reading rather than the sign, because the sign means the opposite thing on each leg. Green is stablecoins arriving or coins leaving, both of which reduce pressure to sell. Red is stablecoins leaving or coins arriving."
+        >
+          {/* The verdict leads. It is the only sentence here that is a finding
+              rather than a figure, and it sat under a colour legend at the
+              bottom of the panel where it read as a footnote to two numbers
+              instead of the conclusion drawn from them. */}
+          <p className="mb-3 text-[13px] font-semibold leading-snug text-[var(--text)]">{verdict}</p>
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <div className="flex items-center gap-1.5">
@@ -213,8 +223,18 @@ export function ExchangeNetflow() {
               <div className="mt-1 font-mono text-2xl font-bold leading-none" style={{ color: flowColor("stable", stable) }}>
                 {stable == null ? "n/a" : `${stable > 0 ? "+" : stable < 0 ? "-" : ""}${usdCompact(Math.abs(stable))}`}
               </div>
+              {/* The direction and what it means, together.
+                  Both legs can read "leaving exchange" while one is red and the
+                  other green, because the colour follows the reading and the
+                  same direction means opposite things on the two legs. With the
+                  convention moved behind the panel mark, that looked like a
+                  bug. It has to be said on the row it applies to. */}
               <div className="mt-1 font-mono text-[11px] text-[var(--text3)]">
-                {stable == null ? "no reading" : stable > 0 ? "arriving on exchange" : "leaving exchange"}
+                {stable == null
+                  ? "no reading"
+                  : stable > 0
+                    ? "arriving, buying power reaching the venues"
+                    : "leaving, buying power stepping away"}
               </div>
             </div>
 
@@ -228,26 +248,15 @@ export function ExchangeNetflow() {
                 {crypto == null ? "n/a" : `${crypto > 0 ? "+" : crypto < 0 ? "-" : ""}${usdCompact(Math.abs(crypto))}`}
               </div>
               <div className="mt-1 font-mono text-[11px] text-[var(--text3)]">
-                {crypto == null ? "no reading" : crypto > 0 ? "arriving on exchange" : "leaving exchange"}
+                {crypto == null
+                  ? "no reading"
+                  : crypto > 0
+                    ? "arriving, supply that can be sold"
+                    : "leaving, less supply to sell"}
               </div>
             </div>
           </div>
 
-          <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] text-[var(--text3)]">
-            <span className="flex items-center gap-1">
-              <span className="inline-block h-2 w-2 rounded-sm" style={{ background: "var(--pos)" }} />
-              stablecoins in, coins out
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="inline-block h-2 w-2 rounded-sm" style={{ background: "var(--neg)" }} />
-              stablecoins out, coins in
-            </span>
-            <span>colour follows the reading, not the sign</span>
-          </p>
-
-          <p className="mt-2 border-t border-[var(--border2)] pt-3 text-[12px] leading-relaxed text-[var(--text2)]">
-            {verdict}
-          </p>
         </Panel>
 
         {/* --------------------------------------------------- reserves -- */}
@@ -296,9 +305,7 @@ export function ExchangeNetflow() {
             <thead>
               <tr>
                 <th className="ident">Venue</th>
-                <th className="num" title="Only the wallets we can attribute to this venue. A venue holding more elsewhere reads low here.">
-                  Reserves
-                </th>
+                <Th label="Reserves" hint="Only the wallets we can attribute to this venue. A venue holding more elsewhere reads low here." num />
                 <th className="num">Net {WINDOW_LABEL[win]}</th>
                 <th>Direction</th>
               </tr>
@@ -415,18 +422,10 @@ export function ExchangeNetflow() {
               <thead>
                 <tr>
                   <th className="ident">Asset</th>
-                  <th className="num" title="Uniswap v3 on Ethereum only, so a token trading elsewhere has its venue understated.">
-                    Onchain liquidity
-                  </th>
-                  <th className="num" title="Last completed day, not the day in progress, which would read as a collapse every morning.">
-                    Onchain daily volume
-                  </th>
-                  <th className="num" title="Coins arriving only. A stablecoin is buying power and an outflow needs no absorbing.">
-                    24h deposits vs volume
-                  </th>
-                  <th className="ident" title="Deepest by liquidity, which is not always where the volume is.">
-                    Deepest pool
-                  </th>
+                  <Th label="Onchain liquidity" hint="Uniswap v3 on Ethereum only, so a token trading elsewhere has its venue understated." num />
+                  <Th label="Onchain daily volume" hint="Last completed day, not the day in progress, which would read as a collapse every morning." num />
+                  <Th label="24h deposits vs volume" hint="Coins arriving only. A stablecoin is buying power and an outflow needs no absorbing." num />
+                  <Th label="Deepest pool" hint="Deepest by liquidity, which is not always where the volume is." />
                 </tr>
               </thead>
               <tbody>
@@ -489,21 +488,11 @@ export function ExchangeNetflow() {
               <thead>
                 <tr>
                   <th className="ident">Asset</th>
-                  <th className="num" title="Addresses with a non-zero balance. One person can hold many, and an exchange holds for millions.">
-                    Holders
-                  </th>
-                  <th className="num" title="Share of circulating supply, not fully diluted.">
-                    Top {data.tokens.find((r) => r.holders)?.holders?.topCount ?? 10} share
-                  </th>
-                  <th className="num" title="Pools, bridges and lending markets. They hold for many people, so this is not concentration.">
-                    In contracts
-                  </th>
-                  <th className="num" title="The share that can act alone. This is the number worth quoting.">
-                    In wallets
-                  </th>
-                  <th className="ident" title="A contract here is usually infrastructure; a wallet is one decision maker.">
-                    Largest single holder
-                  </th>
+                  <Th label="Holders" hint="Addresses with a non-zero balance. One person can hold many, and an exchange holds for millions." num />
+                  <Th label={<>Top {data.tokens.find((r) => r.holders)?.holders?.topCount ?? 10} share</>} hint="Share of circulating supply, not fully diluted." num />
+                  <Th label="In contracts" hint="Pools, bridges and lending markets. They hold for many people, so this is not concentration." num />
+                  <Th label="In wallets" hint="The share that can act alone. This is the number worth quoting." num />
+                  <Th label="Largest single holder" hint="A contract here is usually infrastructure; a wallet is one decision maker." />
                 </tr>
               </thead>
               <tbody>

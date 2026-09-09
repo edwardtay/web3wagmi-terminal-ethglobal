@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { AsOf, ChangeChip, LivePill, Loading, Panel, TableWrap, Unavailable } from "@/components/ui";
+import { AsOf, ChangeChip, InfoHint, LivePill, Loading, Panel, TableWrap, Unavailable } from "@/components/ui";
 import { pctPlain, price, usdCompact, NA } from "@/lib/format";
 import { useSymbol } from "@/lib/useSymbol";
 import { ASSETS, prettyPair, type Sector } from "@/lib/symbols";
@@ -251,18 +251,24 @@ function Th({
   const state = ariaSort(k);
   const active = sort === k;
   return (
-    <th className={num ? "num" : undefined} aria-sort={state} scope="col" title={hint}>
-      <button
-        type="button"
-        onClick={() => onClick(k)}
-        className={`inline-flex items-center gap-1 ${active ? "text-[var(--text)]" : ""}`}
-        aria-label={`Sort by ${label}`}
-      >
-        {label}
-        <span aria-hidden className="font-mono text-[9px]">
-          {state === "none" ? "" : state === "descending" ? "▼" : "▲"}
-        </span>
-      </button>
+    // The hint is a button rather than a title attribute, which has no touch
+    // equivalent, and the sort target carries padding so it is not a 12px
+    // line to hit on a phone.
+    <th className={num ? "num" : undefined} aria-sort={state} scope="col">
+      <span className={`inline-flex items-center gap-1 ${num ? "flex-row-reverse" : ""}`}>
+        <button
+          type="button"
+          onClick={() => onClick(k)}
+          className={`-my-1 inline-flex items-center gap-1 py-1 ${active ? "text-[var(--text)]" : ""}`}
+          aria-label={`Sort by ${label}`}
+        >
+          {label}
+          <span aria-hidden className="font-mono text-[9px]">
+            {state === "none" ? "" : state === "descending" ? "▼" : "▲"}
+          </span>
+        </button>
+        {hint ? <InfoHint text={hint} align={num ? "right" : "left"} /> : null}
+      </span>
     </th>
   );
 }

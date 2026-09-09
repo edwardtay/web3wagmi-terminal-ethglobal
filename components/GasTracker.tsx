@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useApi } from "@/lib/useApi";
-import { Panel, Loading, Unavailable, AsOf, Segmented, TableWrap } from "@/components/ui";
+import { AsOf, Loading, Panel, Segmented, TableWrap, Th, Unavailable} from "@/components/ui";
 import { num, usd, NA } from "@/lib/format";
 
 // Cost to transact, chain by chain. Sorted cheapest first because the ranking,
@@ -113,16 +113,10 @@ export function GasTracker() {
               <tr>
                 <th scope="col" className="ident">Chain</th>
                 <th scope="col" className="num">Cost</th>
-                <th scope="col" className="num" title="Against the cheapest chain in this list.">
-                  vs cheapest
-                </th>
-                <th scope="col" className="num" title="Base fee plus the median priority tip, which is what a transaction actually pays.">
-                  All-in
-                </th>
+                <Th label="vs cheapest" hint="Against the cheapest chain in this list." num />
+                <Th label="All-in" hint="Base fee plus the median priority tip, which is what a transaction actually pays." num />
                 <th scope="col" className="num">Base</th>
-                <th scope="col" className="num" title="10th, 50th and 90th percentile priority tip over the last 20 blocks, in gwei.">
-                  Tip p10 / p50 / p90
-                </th>
+                <Th label="Tip p10 / p50 / p90" hint="10th, 50th and 90th percentile priority tip over the last 20 blocks, in gwei." num />
                 <th scope="col" className="num">Native</th>
               </tr>
             </thead>

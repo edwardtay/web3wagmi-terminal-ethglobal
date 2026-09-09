@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useApi } from "@/lib/useApi";
-import { Panel, Loading, Unavailable, TokenIcon } from "./ui";
+import { Panel, Loading, Unavailable, TokenIcon, Th } from "./ui";
 import { usdCompact, compact, num } from "@/lib/format";
 
 // The live half of the Graph case page.
@@ -102,18 +102,10 @@ export function GraphCase() {
             <thead>
               <tr>
                 <th className="ident">Asset</th>
-                <th className="num" title="Net, so a venue taking and sending the same amount reads flat.">
-                  24h onto exchanges
-                </th>
-                <th className="num" title="Uniswap v3 on Ethereum only, so this is a floor on the real venue.">
-                  Onchain liquidity
-                </th>
-                <th className="num" title="Last completed day, not the day in progress.">
-                  Onchain daily volume
-                </th>
-                <th className="num" title="Coins arriving only. Higher means harder to absorb.">
-                  Deposits vs volume
-                </th>
+                <Th label="24h onto exchanges" hint="Net, so a venue taking and sending the same amount reads flat." num />
+                <Th label="Onchain liquidity" hint="Uniswap v3 on Ethereum only, so this is a floor on the real venue." num />
+                <Th label="Onchain daily volume" hint="Last completed day, not the day in progress." num />
+                <Th label="Deposits vs volume" hint="Coins arriving only. Higher means harder to absorb." num />
               </tr>
             </thead>
             <tbody>
@@ -168,15 +160,9 @@ export function GraphCase() {
               <thead>
                 <tr>
                   <th className="ident">Asset</th>
-                  <th className="num" title="Addresses with a non-zero balance, not people.">
-                    Holders
-                  </th>
-                  <th className="num" title="Share of circulating supply, mostly infrastructure.">
-                    Top 10
-                  </th>
-                  <th className="num" title="The share that can act alone.">
-                    In wallets
-                  </th>
+                  <Th label="Holders" hint="Addresses with a non-zero balance, not people." num />
+                  <Th label="Top 10" hint="Share of circulating supply, mostly infrastructure." num />
+                  <Th label="In wallets" hint="The share that can act alone." num />
                 </tr>
               </thead>
               <tbody>

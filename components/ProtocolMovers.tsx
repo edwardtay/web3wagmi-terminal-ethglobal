@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { ProtocolsPayload, MoverRow, DexRow, FeeRow } from "@/app/api/protocols/route";
 import { useApi } from "@/lib/useApi";
 import { usdCompact, pct, pctPlain } from "@/lib/format";
-import { AsOf, BarCell, ChangeChip, Loading, Panel, Segmented, TableWrap, Unavailable } from "@/components/ui";
+import { AsOf, BarCell, ChangeChip, Loading, Panel, Segmented, TableWrap, Th, Unavailable } from "@/components/ui";
 
 type View = "tvl" | "dex" | "fees";
 
@@ -202,9 +202,7 @@ function FeesView({ fees }: { fees: ProtocolsPayload["fees"] }) {
             <th>Protocol</th>
             <th className="num">Fees 24h</th>
             <th className="num">Rev 24h</th>
-            <th className="num" title="Revenue as a percentage of fees">
-              Take
-            </th>
+            <Th label="Take" hint="Revenue as a percentage of fees" num />
             <th className="num">Fees 7d</th>
           </tr>
         </thead>

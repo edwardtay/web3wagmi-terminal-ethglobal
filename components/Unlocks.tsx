@@ -3,7 +3,7 @@
 import type { UnlocksPayload, UnlockRow } from "@/app/api/unlocks/route";
 import { useApi } from "@/lib/useApi";
 import { compact, pctPlain, usdCompact } from "@/lib/format";
-import { AsOf, BarCell, Loading, Panel, TableWrap, Unavailable } from "@/components/ui";
+import { AsOf, BarCell, Loading, Panel, TableWrap, Th, Unavailable } from "@/components/ui";
 
 
 /** Short UTC date label, e.g. "12 Aug". Unlocks are scheduled in UTC. */
@@ -101,9 +101,7 @@ export function Unlocks() {
                     told apart by it. The order is still by date. */}
                 <th className="ident">Token</th>
                 <th className="ident">Date</th>
-                <th className="num" title="Against circulating cap, not fully diluted, so it measures the shock against what trades. The cap itself is underneath.">
-                  % of mcap
-                </th>
+                <Th label="% of mcap" hint="Against circulating cap, not fully diluted, so it measures the shock against what trades. The cap itself is underneath." num />
                 <th className="num">Unlock USD</th>
                 <th className="num">Tokens</th>
               </tr>

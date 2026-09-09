@@ -152,7 +152,7 @@ export function OpenInterest() {
           <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
             <div className="min-w-0">
               <div className="font-mono text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--text3)]">
-                Universe OI (Binance USDT perps)
+                Total open interest, tracked perps (Binance USDT)
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <span className="whitespace-nowrap font-mono text-xl font-bold text-[var(--text)]">
@@ -280,13 +280,6 @@ export function OpenInterest() {
               ))}
             </tbody>
           </TableWrap>
-
-          <div className="mt-2 flex items-center gap-1.5">
-            <span className="font-mono text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--text3)]">
-              Regime
-            </span>
-            <span className="text-[11px] text-[var(--text3)]">how to read the labels</span>
-          </div>
 
           {ratios.length > 0 && (
             <div className="mt-4 border-t border-[var(--border)] pt-3">

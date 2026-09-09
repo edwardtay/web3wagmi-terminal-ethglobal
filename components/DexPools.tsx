@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useApi } from "@/lib/useApi";
+import { brandColor } from "@/lib/brandColors";
 import { Section, Panel, Loading, Unavailable, ChangeChip, AsOf, InfoHint, BarCell, Segmented, TableWrap } from "./ui";
 import { usdCompact, usd, num, duration, compact } from "@/lib/format";
 
@@ -65,6 +66,21 @@ function riskFlags(p: DexPool): string[] {
   return out;
 }
 
+/**
+ * The chain and the venue, without saying either twice.
+ *
+ * These arrived as two lines that overlapped: "robinhood" above "Uniswap V3
+ * (Robinhood)". A venue name that already carries the chain in brackets does
+ * not need the chain repeated above it.
+ */
+function venueLabel(network: string, dex: string): string {
+  const n = (network || "").trim();
+  const d = (dex || "").trim();
+  if (!d) return n;
+  if (!n) return d;
+  return d.toLowerCase().includes(n.toLowerCase()) ? d : `${n} · ${d}`;
+}
+
 export function DexPools() {
   const { data, loading, failed } = useApi<DexPayload>("/api/dex", 60);
   const [view, setView] = useState<View>("trending");
@@ -113,7 +129,7 @@ export function DexPools() {
       <Segmented
         options={[
           { value: "trending" as View, label: "Trending" },
-          { value: "fresh" as View, label: "New pools" },
+          { value: "fresh" as View, label: "New" },
         ]}
         value={view}
         onChange={setView}
@@ -150,7 +166,7 @@ export function DexPools() {
   return (
     <Section title="DEX pools" id="dex" hint="Pool names link out to GeckoTerminal. Flags are arithmetic on the row and say nothing about the project." right={controls}>
       <Panel
-        title={view === "trending" ? "Trending pools, all networks" : "Newest pools, all networks"}
+        title={view === "trending" ? "Trending" : "Newest"}
         right={
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex items-center gap-1.5">
@@ -171,7 +187,7 @@ export function DexPools() {
             </label>
             <Segmented
               options={[
-                { value: "0" as LiqFloor, label: "any liq" },
+                { value: "0" as LiqFloor, label: "all" },
                 { value: "50000" as LiqFloor, label: "$50k+" },
                 { value: "250000" as LiqFloor, label: "$250k+" },
               ]}
@@ -200,8 +216,11 @@ export function DexPools() {
           <TableWrap maxHeight={560}>
             <thead>
               <tr>
+                {/* Network and venue moved into this cell. They identify the
+                    pool rather than measuring it, and as their own column they
+                    said the same thing twice: "robinhood" above "Uniswap V3
+                    (Robinhood)". */}
                 <th className="ident">Pool</th>
-                <th className="ident">Network / DEX</th>
                 <th className="num">Price</th>
                 <th className="num">1h</th>
                 <th className="num">24h</th>
@@ -235,10 +254,14 @@ export function DexPools() {
                       >
                         {p.pair || `${p.base} / ${p.quote}`}
                       </a>
-                    </td>
-                    <td className="ident">
-                      <span className="text-[var(--text2)]">{p.networkName}</span>
-                      <div className="text-[10px] text-[var(--text3)]">{p.dex}</div>
+                      <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-[var(--text3)]">
+                        <span
+                          className="inline-block h-2 w-2 shrink-0 rounded-full"
+                          style={{ background: brandColor(p.networkName) ?? "var(--text3)" }}
+                          aria-hidden
+                        />
+                        <span className="break-words">{venueLabel(p.networkName, p.dex)}</span>
+                      </div>
                     </td>
                     <td className="num text-[var(--text)]">{usd(p.priceUsd)}</td>
                     <td className="num">

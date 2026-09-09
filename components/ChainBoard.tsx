@@ -2,15 +2,17 @@
 
 import { useMemo, useState } from "react";
 import type { ChainRow, ChainsPayload } from "@/app/api/chains/route";
-import { AsOf, ChangeChip, Loading, Panel, Section, Segmented, Sparkline, TableWrap, Unavailable } from "@/components/ui";
+import { AsOf, ChangeChip, Loading, Panel, Section, Segmented, Sparkline, TableWrap, Th, Unavailable } from "@/components/ui";
 import { pct, pctPlain, signColor, usdCompact, NA } from "@/lib/format";
 import { useApi } from "@/lib/useApi";
+import { brandColor } from "@/lib/brandColors";
 
 
 /**
  * Ten distinct fills for the share bar. Only the theme tokens are used, blended
  * toward the surface for the tail so the ramp stays legible in both themes.
  */
+/** Fallback palette, for chains with no brand colour on file. */
 const SHARE_COLORS = [
   "var(--accent)",
   "var(--cyan)",
@@ -64,7 +66,14 @@ function ShareBar({ rows, total }: { rows: ChainRow[]; total: number }) {
   const covered = top.reduce((s, r) => s + r.share, 0);
   const other = Math.max(0, 100 - covered);
   const segments = [
-    ...top.map((r, i) => ({ name: r.name, share: r.share, color: SHARE_COLORS[i], tvl: r.tvl })),
+    // The chain's own colour where we know it, so the bar says what the row is
+    // rather than where it sits in the sort.
+    ...top.map((r, i) => ({
+      name: r.name,
+      share: r.share,
+      color: brandColor(r.name) ?? SHARE_COLORS[i % SHARE_COLORS.length],
+      tvl: r.tvl,
+    })),
     { name: "Other chains", share: other, color: OTHER_COLOR, tvl: (other / 100) * total },
   ];
 
@@ -202,20 +211,21 @@ export function ChainBoard() {
 
           <Panel
             title="Top 20 chains by TVL"
+            hint="DefiLlama, refreshed every 10 minutes. Changes compare current USD TVL against the daily snapshot 1, 7 and 30 days back, so a dash means the chain has no history that far back rather than no change."
             right={
               <Segmented<SortKey> options={SORTS} value={sort} onChange={setSort} ariaLabel="Sort chains by" />
             }
           >
-            <TableWrap maxHeight={520}>
+            <TableWrap maxHeight={520} pinTwo>
               <thead>
                 <tr>
-                  <th className="num" title="Rank by total value locked">#</th>
+                  <Th label="#" hint="Rank by total value locked" num />
                   <th className="ident">Chain</th>
                   <th className="num">TVL (USD)</th>
                   <th className="num">24h</th>
                   <th className="num">7d</th>
                   <th className="num">30d</th>
-                  <th className="num" title="Share of total chain TVL">Share</th>
+                  <Th label="Share" hint="Share of total chain TVL" num />
                   <th>90d</th>
                 </tr>
               </thead>
@@ -224,6 +234,14 @@ export function ChainBoard() {
                   <tr key={r.name}>
                     <td className="num text-[var(--text3)]">{r.rank}</td>
                     <td className="min-w-0">
+                      {/* The chain's own colour, the same mark the share bar
+                          above uses, so a row and its slice of the bar are the
+                          same colour rather than two unrelated encodings. */}
+                      <span
+                        className="mr-1.5 inline-block h-2 w-2 shrink-0 rounded-full align-middle"
+                        style={{ background: brandColor(r.name) ?? "var(--text3)" }}
+                        aria-hidden
+                      />
                       <span className="font-semibold text-[var(--text)]">{r.name}</span>
                       {r.symbol && (
                         <span className="ml-1.5 font-mono text-[10px] text-[var(--text3)]">{r.symbol}</span>
@@ -247,10 +265,6 @@ export function ChainBoard() {
                 ))}
               </tbody>
             </TableWrap>
-            <div className="mt-2 text-[11px] leading-snug text-[var(--text2)]">
-              Source: DefiLlama, refreshed every 10 minutes. Changes compare the current USD TVL against the
-              daily snapshot 1, 7 and 30 days back. A dash means the chain has no history that far back.
-            </div>
           </Panel>
         </div>
       )}

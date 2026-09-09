@@ -1,6 +1,6 @@
 "use client";
 
-import { BarCell, Loading, Panel, TableWrap, Unavailable } from "@/components/ui";
+import { BarCell, Loading, Panel, TableWrap, Th, Unavailable} from "@/components/ui";
 import { pct, signColor } from "@/lib/format";
 import { useApi } from "@/lib/useApi";
 import { useNarrow } from "@/lib/useNarrow";
@@ -230,9 +230,7 @@ export function Rotation() {
           <thead>
             <tr>
               <th scope="col">Sector</th>
-              <th scope="col" className="num" title="Members of the tracked universe in this sector">
-                N
-              </th>
+              <Th label="N" hint="Members of the tracked universe in this sector" num />
               <th scope="col" className="num">
                 24h
               </th>

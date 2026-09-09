@@ -2,7 +2,7 @@
 
 import { useApi } from "@/lib/useApi";
 import { Loading, Unavailable, InfoHint } from "./ui";
-import { num, pct, usdCompact, signColor } from "@/lib/format";
+import { num, usdCompact, signColor } from "@/lib/format";
 
 // What the whole market is doing, rather than what six coins cost.
 //
@@ -15,6 +15,10 @@ import { num, pct, usdCompact, signColor } from "@/lib/format";
 // reference that makes it mean something, which is the rule the rest of this
 // terminal keeps: a breadth count is meaningless without its total, and a
 // stress score is meaningless without where it sits in its own year.
+//
+// Total market cap and the stablecoin share are not here. The panel directly
+// underneath already carries both, and a number stated twice on one screen
+// reads as two findings rather than one.
 
 interface Breadth {
   ok: boolean;
@@ -41,11 +45,15 @@ interface Quant {
 interface Derivs {
   ok: boolean;
   oi?: { venues?: { venue: string; usd: number }[] }[];
+  hlPlatform?: {
+    volumeUsd: number;
+    buyUsd: number;
+    sellUsd: number;
+    liquidationsUsd: number;
+    activeCoins: number;
+  } | null;
 }
-interface Snap {
-  ok: boolean;
-  global?: { stableDom?: number | null; mcapChg24?: number | null };
-}
+
 
 function Stat({
   label,
@@ -109,7 +117,6 @@ export function Composites() {
   const { data: s } = useApi<Stress>("/api/stress", 900);
   const { data: q } = useApi<Quant>("/api/quant", 900);
   const { data: d } = useApi<Derivs>("/api/derivs", 180);
-  const { data: snap } = useApi<Snap>("/api/snapshot", 30);
 
   if (loading) return <Loading rows={4} />;
   if (failed || !b?.ok) return <Unavailable what="The market composites" />;
@@ -119,15 +126,19 @@ export function Composites() {
   const corr90 = averagePairwise(q?.corr?.["90"]);
 
   // Every venue on every asset, which is the number the per-row bars add up to.
+  const hl = d?.hlPlatform ?? null;
   const totalOi = (d?.oi ?? []).reduce(
     (a, r) => a + (r.venues ?? []).reduce((x, v) => x + v.usd, 0),
     0
   );
 
+  // One per row on a phone. Two columns put a jargon label, a percentage and a
+  // count into about 150px, which is where "Above 50d" stopped being a label
+  // and became a puzzle.
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <Stat
-        label="Stress"
+        label="Market stress"
         value={s?.score == null ? "n/a" : num(s.score, 0)}
         color={s?.band?.color}
         sub={
@@ -138,19 +149,19 @@ export function Composites() {
         hint="A composite of realised and implied volatility, funding, stablecoin peg deviation, correlation and drawdown. The percentile is against its own last 365 days, which is the only thing that makes a score out of 100 mean anything."
       />
       <Stat
-        label="Above 50d"
+        label="Above 50-day average"
         value={share(b.above50)}
-        sub={b.above50 ? `${b.above50.n} of ${b.above50.total} pairs` : undefined}
+        sub={b.above50 ? `${b.above50.n} of ${b.above50.total} pairs are in an uptrend by this measure` : undefined}
         hint="Share of the top 100 USDT spot pairs trading above their own 50 day moving average. A market where price is up and breadth is not is being carried by a few names."
       />
       <Stat
-        label="Above 200d"
+        label="Above 200-day average"
         value={share(b.above200)}
-        sub={b.above200 ? `${b.above200.n} of ${b.above200.total} pairs` : undefined}
+        sub={b.above200 ? `${b.above200.n} of ${b.above200.total} pairs, the slower line` : undefined}
         hint="The same count against the 200 day average, which is the slower line. The gap between this and the 50 day figure is how recent the strength is."
       />
       <Stat
-        label="Advance / decline"
+        label="Rising vs falling, 24h"
         value={ad ? `${ad.up} / ${ad.down}` : "n/a"}
         color={adNet == null ? undefined : signColor(adNet)}
         sub={
@@ -161,35 +172,33 @@ export function Composites() {
         hint="How many of the tracked pairs rose against how many fell over 24 hours, with 30 day highs and lows underneath. A rally on narrow advances is a different market from the same move on broad ones."
       />
       <Stat
-        label="Alts vs BTC"
+        label="Beating Bitcoin, 7d"
         value={share(b.outperf7)}
         sub={b.outperf7 ? `${b.outperf7.n} of ${b.outperf7.total} beat BTC, 7d` : undefined}
         hint="Share of the universe outperforming Bitcoin over seven days. Above half is a market paying for risk beyond the majors; below it, capital is consolidating into them."
       />
       <Stat
-        label="Correlation"
+        label="How alike they move"
         value={corr90 == null ? "n/a" : num(corr90, 2)}
-        sub="average pairwise, 90d"
+        sub="average pairwise correlation, 90 days"
         hint="Average pairwise correlation across the tracked universe. High means most of a portfolio's variance comes from the market factor and picking alts is a second order call."
+      />
+      <Stat
+        label="Onchain perp flow"
+        value={
+          hl && hl.volumeUsd > 0
+            ? `${num((hl.buyUsd / hl.volumeUsd) * 100, 0)}% buy`
+            : "n/a"
+        }
+        color={hl && hl.volumeUsd > 0 ? signColor(hl.buyUsd - hl.sellUsd) : undefined}
+        sub={hl ? `${usdCompact(hl.volumeUsd, 1)} across ${hl.activeCoins} markets, 24h` : undefined}
+        hint="Buy volume as a share of all volume on Hyperliquid over the last daily bar, across every market it lists. Every other reading here is per asset; this is the venue itself, so it says whether the onchain crowd was lifting offers or hitting bids in aggregate. Near fifty percent is the resting state."
       />
       <Stat
         label="Perp open interest"
         value={totalOi > 0 ? usdCompact(totalOi, 2) : "n/a"}
         sub="Binance, Bybit, OKX, Hyperliquid"
         hint="Notional across all four venues the terminal reads, which is what is at stake if positioning unwinds. Size, not direction: the regime column on the open interest board carries that."
-      />
-      <Stat
-        label="Stablecoin share"
-        value={snap?.global?.stableDom == null ? "n/a" : `${num(snap.global.stableDom, 1)}%`}
-        sub="of total market cap"
-        hint="Stablecoins as a share of total crypto market cap. It rises when capital steps out of risk without leaving the asset class, so it is the closest thing here to a cash balance for the whole market."
-      />
-      <Stat
-        label="Market cap 24h"
-        value={snap?.global?.mcapChg24 == null ? "n/a" : pct(snap.global.mcapChg24, 2)}
-        color={snap?.global?.mcapChg24 == null ? undefined : signColor(snap.global.mcapChg24)}
-        sub="whole asset class"
-        hint="Total crypto market capitalisation over 24 hours. The one number here that a headline would quote, kept for reference rather than for insight."
       />
     </div>
   );
