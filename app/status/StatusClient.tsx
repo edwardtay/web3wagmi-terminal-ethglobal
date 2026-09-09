@@ -43,6 +43,7 @@ const ROUTES: Route[] = [
   { path: "/api/revenue", label: "Fees and revenue", upstream: "DefiLlama fees" },
   { path: "/api/standards", label: "Standardized subgraphs", upstream: "The Graph gateway" },
   { path: "/api/brief", label: "The brief", upstream: "the desks below, plus the model" },
+  { path: "/api/agents", label: "Agent registries", upstream: "The Graph, Agent0 subgraphs" },
 ];
 
 interface Result {

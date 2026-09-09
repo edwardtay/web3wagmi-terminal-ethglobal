@@ -114,9 +114,9 @@ export function AgentEconomy() {
           </tbody>
         </TableWrap>
 
-        {data.note && (
-          <p className="mt-3 break-words text-[11px] leading-relaxed text-[var(--text3)]">{data.note}</p>
-        )}
+        {/* No count of chains that did not answer. The row carries its own
+            reason, in place, and a line underneath saying one row has a reason
+            on it is the sentence a reader has already read. */}
         {data.asOf && <AsOf iso={data.asOf} staleMs={2 * 60 * 60 * 1000} />}
       </>
     );
@@ -126,7 +126,7 @@ export function AgentEconomy() {
     <Section
       title="Agent economy"
       id="agents"
-      hint="ERC-8004 is the Ethereum standard that gives an autonomous agent an onchain identity, a portable reputation and a record of independent validation, in three registries deployed once per chain. This desk reads all of them through The Graph's Agent0 subgraphs. It counts identities and the ratings written about them, which are different things: one is a registration and the other is evidence that somebody used the agent and paid to say so. Validation records are indexed too and are still empty everywhere, which is itself the current state of the standard rather than a gap in this panel."
+      hint="ERC-8004 gives an agent an onchain identity and a reputation, in registries deployed once per chain, read here through The Graph's Agent0 subgraphs. Validation records are indexed and empty on every chain, which is the standard's current state rather than a gap here."
     >
       <Panel>{body()}</Panel>
     </Section>

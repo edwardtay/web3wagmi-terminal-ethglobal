@@ -758,7 +758,8 @@ const PICKING = `You answer crypto market questions for a terminal by calling it
 - The dislocation queue ranks what moved far from its own reference. It never holds a level. For a level, call the tool that has it.
 - A question comparing protocols, or asking which is largest, or how one stacks against another, is compare_protocols. It answers about protocols rather than tokens, and it spans the nine on the standardized schema.
 - A question about who earns, who is most profitable, which app or chain makes the most money, who returns the most to token holders, or who is earning more or less than usual is fee_leaders. Set rankBy to match the question: revenue for who keeps the most, holders for what reaches the token, growth for who is speeding up or slowing down against the window before. It covers the whole market. compare_protocols covers nine protocols, so ranking earnings from it would name the biggest of nine as the biggest of all: never answer an earnings question from it.
-- You cover what this terminal measures: prices, funding, open interest, options, exchange flow, onchain liquidity and ownership. Asked to explain a concept or how a protocol works, call nothing.
+- This list is what the terminal measures, and it decides whether a question gets tools at all. Keep it current when a desk is added: it was written before the fee board and the standardized subgraph panel existed, and until it named them "which protocol keeps the biggest share of the fees it earns" was answered as out of scope about one time in four, which is the flagship question of a desk that had been live for days.
+- You cover what this terminal measures: prices, funding, open interest, options, liquidations, exchange flow, onchain liquidity and ownership, protocol fees and revenue and what reaches token holders, total value locked, yields, stablecoins, token unlocks, gas, and the onchain agent registries. Asked to explain a concept or how a protocol works, call nothing.
 - When you have called every tool the question needs, reply with the single word DONE and nothing else. Never write the answer here. Another turn writes it, and anything you write in this one is discarded.`;
 
 const SYSTEM = `You answer questions about crypto markets for a terminal, using only the tools provided.
@@ -776,7 +777,7 @@ Other rules you do not break:
 - The dislocation queue ranks what moved far from its own reference. It is not a source of levels. An empty queue never means a value is small, an ownership is broad, or a risk is absent, and answering a question about a level from an empty queue is wrong. Call the tool that holds the level.
 - State the scope when it matters. The flow desk is a sample of labelled Ethereum wallets, not total exchange reserves.
 - No hedging, no disclaimers about volatility, no advice to do your own research. The reader is a market participant.
-- You cover what this terminal measures: prices, funding, open interest, options, exchange flow, onchain liquidity and ownership. Asked to explain a concept, a protocol or how something works in general, say that is not what this terminal reads and that the web3wagmi guides cover it. Do not attempt the explanation from memory.
+- You cover what this terminal measures: prices, funding, open interest, options, liquidations, exchange flow, onchain liquidity and ownership, protocol fees and revenue and what reaches token holders, total value locked, yields, stablecoins, token unlocks, gas, and the onchain agent registries. Asked to explain a concept, a protocol or how something works in general, say that is not what this terminal reads and that the web3wagmi guides cover it. Do not attempt the explanation from memory.
 - When a tool says an asset is not tracked, say it is not tracked and name what is. Do not soften a coverage limit into "not available at the moment", which describes an outage and invites the reader to try again.
 - A coverage limit belongs to the desk that reported it and to nothing else. The exchange flow desk covers four tokens on Ethereum; the funding, open interest, liquidations, options and price desks cover the whole tracked universe. If one desk has no reading for an asset and another does, answer from the one that does. Never announce that an asset is not covered while quoting a number you just read for it.
 - When a tool returns an interpretation, that is the reading. Use it and do not substitute your own. Deriving a direction from the sign of a number is the one mistake that matters here, and the conventions are not intuitive.
@@ -1066,7 +1067,7 @@ export interface Session {
  * do. It also costs nothing.
  */
 const OUT_OF_SCOPE =
-  "That is not something this terminal measures. It reads prices, funding, open interest, options, exchange flow, onchain liquidity and ownership. For concepts and how protocols work, the web3wagmi guides cover them.";
+  "That is not something this terminal measures. It reads prices, funding, open interest, options, liquidations, exchange flow, onchain liquidity and ownership, protocol fees and revenue and what reaches token holders, total value locked, yields, stablecoins, token unlocks, gas, and the onchain agent registries. For concepts and how protocols work, the web3wagmi guides cover them.";
 
 /**
  * The answer if this reply carries one, or null if it does not.
@@ -1418,6 +1419,8 @@ export async function ask(question: string, origin: string, focus?: string): Pro
   // failed on the same code.
   const used: AskResult["used"] = [];
   const session: Session = { fallbackModel: null };
+  /** Whether the empty-handed model has already been asked to reconsider. */
+  let nudged = false;
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const reply = await chat(messages, true, session);
@@ -1436,7 +1439,34 @@ export async function ask(question: string, origin: string, focus?: string): Pro
       //
       // Nothing written in this loop is used now. The answer has exactly one
       // author.
-      if (used.length === 0) return { ok: true, answer: OUT_OF_SCOPE, used, note: null };
+      if (used.length === 0) {
+        // One tool pick is not enough evidence that a question is off topic.
+        //
+        // Reaching here means the model gathered nothing at all, and that
+        // decides the answer outright: the reader is told the terminal does not
+        // measure the thing. On a genuinely conceptual question that is right.
+        // On "which protocol keeps the biggest share of the fees it earns" it
+        // was wrong about one time in four, and that is the flagship question
+        // of a desk that had been live for days. Widening the scope sentence
+        // helped and did not fix it, because the failure is a flaky pick rather
+        // than a misunderstanding: the same question, the same prompt and the
+        // same data answer correctly on the next attempt.
+        //
+        // So ask once more, and say plainly what the silence will be taken to
+        // mean. A question about a concept still calls nothing the second time,
+        // because nothing here can answer it, and the guard holds. A question
+        // about a desk gets its tools.
+        if (!nudged) {
+          nudged = true;
+          messages.push({
+            role: "user",
+            content:
+              "You called no tools, so this answer will tell the reader that the terminal does not measure what they asked about. Only let that stand if the question is about a concept, a definition, or how something works in general. If any desk carries a reading that bears on it, including fees and revenue, what a protocol keeps or passes to holders, total value locked, yields, unlocks, gas, or the agent registries, call the tools for it now. Otherwise reply DONE.",
+          });
+          continue;
+        }
+        return { ok: true, answer: OUT_OF_SCOPE, used, note: null };
+      }
       break;
     }
 
