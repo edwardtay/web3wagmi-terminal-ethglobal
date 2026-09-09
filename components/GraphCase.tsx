@@ -41,7 +41,15 @@ interface Netflow {
   source: "graph" | "rpc" | null;
   note: string | null;
   tokens: Token[];
-  coverage: { wallets: number; walletsTracked: number; venues: number; callsPerRefresh?: number; costPerMonthUsd?: number };
+  coverage: {
+    wallets: number;
+    walletsTracked: number;
+    venues: number;
+    callsPerRefresh?: number;
+    costPerMonthUsd?: number;
+    /** Which Token API host answered. No credential in it. */
+    graphHost?: string;
+  };
 }
 
 interface AskResult {
@@ -65,6 +73,18 @@ function signed(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v)) return "n/a";
   return `${v > 0 ? "+" : v < 0 ? "-" : ""}${usdCompact(Math.abs(v))}`;
 }
+
+/**
+ * Graph spend outside the flow desk, per month.
+ *
+ * Hyperliquid open interest is twelve coins on a fifteen minute window and the
+ * platform read is one call hourly, both in the cheap token category. They live
+ * on the derivatives route, so the flow desk's own budget does not see them.
+ *
+ * Stated rather than computed here because the arithmetic belongs next to the
+ * calls that cause it: 34,560 and 720 requests a month at $15 per million.
+ */
+const OTHER_GRAPH_USD = 0.53;
 
 export function GraphCase() {
   const { data, loading, failed } = useApi<Netflow>("/api/netflow", 300);
@@ -184,14 +204,25 @@ export function GraphCase() {
           </div>
         </Panel>
 
-        <Panel title="What it costs" hint="The Token API meters money, not calls. A time series read costs thirteen times a balance read, so the category a route picks matters more than shaving a call. Hourly would be $24.19 and every fifteen minutes $96.77, past the plan's hard cutoff.">
+        <Panel
+          title="What it costs"
+          hint="The Token API meters money, not calls. A time series read costs thirteen times a balance read, so the category a route picks matters more than shaving a call. Hourly would be $24.19 and every fifteen minutes $96.77, past the plan's hard cutoff. The host is shown because token-api.thegraph.com is unreachable from this region, browser and server alike, and the service host serves the same API on the same key: the reads happen, they are simply metered there rather than on the market dashboard."
+        >
           <dl className="space-y-2 font-mono text-[12px]">
             {[
               ["Reads per refresh", String(data.coverage.callsPerRefresh ?? "n/a")],
-              ["Cost per month", data.coverage.costPerMonthUsd != null ? `$${data.coverage.costPerMonthUsd.toFixed(2)}` : "n/a"],
+              // Named for what it covers. This figure is the flow desk's own
+              // budget, and calling it the cost per month understated the
+              // terminal by every Graph read added since: the Hyperliquid open
+              // interest and platform calls sit on another route and are not in
+              // it. A number that quietly means something narrower than its
+              // label is the thing this terminal is built not to do.
+              ["This desk, per month", data.coverage.costPerMonthUsd != null ? `$${data.coverage.costPerMonthUsd.toFixed(2)}` : "n/a"],
+              ["Whole terminal, per month", `$${OTHER_GRAPH_USD.toFixed(2)} more, about $${((data.coverage.costPerMonthUsd ?? 0) + OTHER_GRAPH_USD).toFixed(2)}`],
               ["Free credit", "$25.00"],
               ["Refresh window", "4 hours"],
               ["Source answering", data.source ?? "none"],
+              ["Token API host", data.coverage.graphHost ?? "n/a"],
             ].map(([k, v]) => (
               <div key={k} className="flex items-baseline justify-between gap-3 border-b border-[var(--border2)] pb-1.5">
                 <dt className="text-[var(--text3)]">{k}</dt>

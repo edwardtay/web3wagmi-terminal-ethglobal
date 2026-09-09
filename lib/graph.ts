@@ -25,7 +25,50 @@ import { getJson } from "./http";
 // that hostname). The Pinax service host serves the same API and is the
 // fallback for local work.
 
-const BASE = process.env.GRAPH_TOKEN_API_BASE ?? "https://token-api.thegraph.com";
+/**
+ * The Token API host, preferring the branded one and falling back.
+ *
+ * This used to be a single environment variable, and that variable is set to
+ * the Pinax service host on the developer machine because
+ * `token-api.thegraph.com` is dropped at the TLS handshake on that network.
+ * The container image derives its environment from the same file, so a
+ * local-only workaround travelled to production: every metered call went to
+ * the service host, and the account dashboard read 0.0% of its allowance while
+ * the terminal made tens of thousands of requests a month.
+ *
+ * Both hosts serve the same API and take the same key, so nothing was broken.
+ * It was invisible, which is worse: usage that does not appear against the
+ * account is usage nobody can check.
+ *
+ * The canonical host is tried first now and the service host is the fallback,
+ * chosen once per process. An explicit GRAPH_TOKEN_API_BASE still wins, for the
+ * case where someone genuinely needs to pin one.
+ */
+const CANONICAL_BASE = "https://token-api.thegraph.com";
+const FALLBACK_BASE = "https://token-api.service.pinax.network";
+
+let resolvedBase: string | null = process.env.GRAPH_TOKEN_API_BASE ?? null;
+
+async function baseUrl(key: string): Promise<string> {
+  if (resolvedBase) return resolvedBase;
+  try {
+    const res = await fetch(`${CANONICAL_BASE}/v1/evm/tokens?network=mainnet&limit=1`, {
+      headers: authHeader(key),
+      signal: AbortSignal.timeout(8000),
+      cache: "no-store",
+    });
+    // Any HTTP answer means the host is reachable. A 401 or a 429 is still a
+    // host that can be called; only a transport failure rules it out.
+    resolvedBase = res ? CANONICAL_BASE : FALLBACK_BASE;
+  } catch {
+    console.error("[graph] canonical host unreachable, using the service host");
+    resolvedBase = FALLBACK_BASE;
+  }
+  return resolvedBase;
+}
+
+/** The host chosen for this process, for the payload to report. */
+const BASE = process.env.GRAPH_TOKEN_API_BASE ?? CANONICAL_BASE;
 
 /**
  * Networks the Token API indexes. Taken from the `network` enum in `GET
@@ -115,7 +158,11 @@ export function graphReady(): boolean {
  */
 export function graphHost(): string {
   try {
-    return new URL(BASE).host;
+    // The host actually being called, not the one preferred. They differ when
+    // the canonical endpoint is unreachable, and reporting the preference
+    // rather than the choice is how a local-only fallback stayed invisible in
+    // production for a week.
+    return new URL(resolvedBase ?? BASE).host;
   } catch {
     return "invalid";
   }
@@ -167,7 +214,8 @@ export async function graphGet<T>(
     if (v !== undefined && v !== "") qs.set(k, String(v));
   }
 
-  const body = await getJson<GraphEnvelope<T>>(`${BASE}${path}?${qs}`, {
+  const host = await baseUrl(key);
+  const body = await getJson<GraphEnvelope<T>>(`${host}${path}?${qs}`, {
     revalidate: opts.revalidate ?? 1800,
     timeout: opts.timeout ?? 20_000,
     headers: authHeader(key),
