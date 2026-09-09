@@ -78,6 +78,16 @@ export default async function Home({
         {/* ---- Glance ---- */}
         <Snapshot />
 
+        {/* Fees and revenue, third on the page.
+            Price is what something costs and revenue is whether anyone is
+            paying to use it, and the second is the slower, harder fact: a chart
+            can move on nothing, a fee cannot. It has now moved twice, from
+            among the venue plumbing to behind the flow desk to here, because
+            each time the question it answers turned out to be one a reader
+            wants before the market detail rather than after it. It stays above
+            the fold on a desk and one scroll away on a phone. */}
+        <Earners />
+
         {/* Market stress, beside the snapshot rather than below the focus.
             It is a composite over the whole universe, so it belongs with the
             other market-wide readings: sitting after one instrument's chart
@@ -139,14 +149,6 @@ export default async function Home({
         {/* ---- On-chain ---- */}
         <div id="onchain" className="scroll-mt-[186px] xl:scroll-mt-[145px]">
           <ExchangeNetflow />
-
-          {/* Who earns, straight after the flow desk.
-              These are the two questions about substance rather than price: what
-              is moving on chain, and whether anyone is actually paying to use
-              any of it. It sat ten panels lower among the venue plumbing, which
-              is where a reader goes to look something up rather than to be told
-              something. */}
-          <Earners />
 
           <DexPools />
 

@@ -53,6 +53,7 @@ interface Row {
   totalAllTime?: number | null;
   slug?: string;
   /** The window before the window, which is what makes growth measurable. */
+  protocolType?: string;
   total48hto24h?: number | null;
   total14dto7d?: number | null;
   total60dto30d?: number | null;
@@ -84,6 +85,8 @@ export interface EarnerRow {
   chains: string[];
   fees: Partial<Record<Period, number | null>>;
   revenue: Partial<Record<Period, number | null>>;
+  /** True where the source calls this a chain rather than something built on one. */
+  isChain: boolean;
   /** The suppliers' share: liquidity providers, depositors, stakers. */
   supply: Partial<Record<Period, number | null>>;
   holders: Partial<Record<Period, number | null>>;
@@ -185,6 +188,19 @@ export async function GET() {
     return {
       name: r.displayName || r.name || "unknown",
       slug: r.slug ?? null,
+      // Either signal, because neither is complete on its own. The source
+      // labels Everclear a cross chain bridge and Space and Time developer
+      // tools while typing both of them as chains, so a category test alone
+      // filed two chains under applications.
+      //
+      // What this deliberately does not do is guess from a name. "Arbitrum
+      // Nitro" reads like the L2 and is not: it is the Foundation's earnings
+      // from the Nitro stack running Robinhood Chain, typed a protocol and
+      // categorised Foundation, and Arbitrum the chain is a separate row
+      // earning a different amount. Opening the row says which chain the fees
+      // came from, which is the honest way to resolve that rather than
+      // rewriting the source's classification from a substring.
+      isChain: (r.category ?? "") === "Chain" || r.protocolType === "chain",
       category: r.category ?? null,
       chains: (r.chains ?? []).slice(0, 4),
       fees: f,
@@ -204,7 +220,7 @@ export async function GET() {
   };
 
   const all = fees.protocols.map(build);
-  const isChain = (r: EarnerRow) => (r.category ?? "") === "Chain";
+  const isChain = (r: EarnerRow) => r.isChain;
 
   // The leaders of every column, on every window.
   //

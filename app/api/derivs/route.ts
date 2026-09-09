@@ -119,6 +119,30 @@ export interface OiRow {
 
 export type Regime = "new longs" | "new shorts" | "short covering" | "long liquidation";
 
+/**
+ * What each regime means for direction.
+ *
+ * Beside `regimeOf` rather than at either reader, because a label and its
+ * meaning drifting apart is how this went wrong: handed the bare string "short
+ * covering", the brief wrote that it was "adding downward pressure". Backwards.
+ * Short covering is shorts buying back, and buying is upward. It is a fair
+ * reading of the words alone, since falling open interest sounds like weakness,
+ * and the model had nothing else to go on.
+ *
+ * Both the brief and the assistant now send this with the label, and both are
+ * told never to infer direction from whether open interest rose or fell.
+ */
+export const REGIME_MEANING: Record<Regime, string> = {
+  "new longs":
+    "price up on rising open interest: buyers are adding leverage. Directionally bullish, and it builds the fuel for a liquidation cascade lower.",
+  "new shorts":
+    "price down on rising open interest: sellers are adding leverage. Directionally bearish, and it builds fuel for a squeeze higher.",
+  "short covering":
+    "price up on falling open interest: shorts are buying back to close. That is upward pressure, and it is unwinding rather than fresh conviction, so it tends not to last on its own.",
+  "long liquidation":
+    "price down on falling open interest: longs are selling to close. That is downward pressure, and it is unwinding rather than fresh selling, so it tends to exhaust itself.",
+};
+
 function regimeOf(price: number | null, oi: number | null): Regime | null {
   if (price == null || oi == null) return null;
   if (price >= 0 && oi >= 0) return "new longs";

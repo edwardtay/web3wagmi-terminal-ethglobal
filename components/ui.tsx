@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { pct, NA } from "@/lib/format";
 import { TOKEN_ICONS, TOKEN_ICON_VERSION } from "@/lib/tokenIcons";
 
@@ -165,10 +166,6 @@ export function AsOf({ iso, staleMs = 10 * 60 * 1000 }: { iso?: string | null; s
 }
 
 /**
- * Small "?" affordance revealing an explanation on hover, so panels stay dense
- * without leaving a jargon term unexplained. Pure CSS group-hover, no state.
- */
-/**
  * The caveat behind a mark.
  *
  * A button rather than a hover target, because hover does not exist on a
@@ -177,13 +174,56 @@ export function AsOf({ iso, staleMs = 10 * 60 * 1000 }: { iso?: string | null; s
  * absence, and on touch every one of them was unreachable: the mark rendered,
  * invited a tap, and did nothing.
  *
+ * The bubble is rendered into the document body rather than beside the mark.
+ *
+ * A table header is `position: sticky` with a z-index, which makes it a
+ * stacking context, so a bubble inside one was sealed at the header's layer
+ * however high its own z-index went. The pinned identity column sits a layer
+ * above that, and ordinary cells paint over it too: opening the caveat on
+ * "Kept" drew "$11.62m" and "78%" straight through the sentence. No z-index on
+ * the bubble can fix that from inside, because the ceiling is the ancestor's.
+ * Out at the body it has no ancestor to be trapped by, and the same code then
+ * serves the marks that sit in section headings, panel titles and cells.
+ *
+ * The cost is that position follows the mark by measurement rather than by
+ * layout, so it is recomputed while open on scroll and resize.
+ *
  * Hover still opens it on a pointer device, so nothing is lost on a desk. The
  * tap toggles, and Escape or a press anywhere else closes it.
  */
 export function InfoHint({ text, align = "left" }: { text: string; align?: "left" | "right" }) {
   const [open, setOpen] = useState(false);
+  const [at, setAt] = useState<{ top: number; left: number; width: number } | null>(null);
   const id = useId();
   const ref = useRef<HTMLSpanElement>(null);
+
+  // Measured against the viewport, so the bubble is `fixed` and needs no scroll
+  // offset. Clamped to the window because a mark in the last column would
+  // otherwise put its bubble off the right edge, which on a phone is most of
+  // the table's columns.
+  const place = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const margin = 8;
+    const width = Math.min(256, window.innerWidth - margin * 2);
+    const wanted = align === "right" ? r.right - width : r.left;
+    const left = Math.max(margin, Math.min(wanted, window.innerWidth - width - margin));
+    setAt({ top: r.bottom + 6, left, width });
+  }, [align]);
+
+  useEffect(() => {
+    if (!open) return;
+    place();
+    const onMove = () => place();
+    // Capture, so a scroll inside the table's own scrollport moves it too.
+    window.addEventListener("scroll", onMove, true);
+    window.addEventListener("resize", onMove);
+    return () => {
+      window.removeEventListener("scroll", onMove, true);
+      window.removeEventListener("resize", onMove);
+    };
+  }, [open, place]);
 
   useEffect(() => {
     if (!open) return;
@@ -204,7 +244,12 @@ export function InfoHint({ text, align = "left" }: { text: string; align?: "left
   }, [open]);
 
   return (
-    <span ref={ref} className="group relative inline-flex align-middle">
+    <span
+      ref={ref}
+      className="group relative inline-flex align-middle"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
       <button
         type="button"
         aria-label="What this means"
@@ -235,15 +280,23 @@ export function InfoHint({ text, align = "left" }: { text: string; align?: "left
           <path d="M8 7.2v4.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
       </button>
-      <span
-        id={id}
-        role="tooltip"
-        className={`pointer-events-none absolute top-full z-50 mt-1.5 w-[min(16rem,calc(100vw-2rem))] rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2.5 text-[11px] font-normal normal-case leading-relaxed tracking-normal text-[var(--text2)] shadow-[var(--shadow-lg)] ${
-          open ? "block" : "hidden group-hover:block"
-        } ${align === "right" ? "right-0" : "left-0"}`}
-      >
-        {text}
-      </span>
+      {open &&
+        at &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <span
+            id={id}
+            role="tooltip"
+            // 210, above the command palette at 200, because a caveat opened
+            // from a panel behind a dialog would otherwise be the one thing on
+            // screen the reader cannot see.
+            className="pointer-events-none fixed z-[210] block rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2.5 text-[11px] font-normal normal-case leading-relaxed tracking-normal text-[var(--text2)] shadow-[var(--shadow-lg)]"
+            style={{ top: at.top, left: at.left, width: at.width }}
+          >
+            {text}
+          </span>,
+          document.body
+        )}
     </span>
   );
 }

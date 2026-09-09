@@ -1,4 +1,5 @@
 import "server-only";
+import { REGIME_MEANING } from "@/app/api/derivs/route";
 import { getJson } from "./http";
 import { readCoverage } from "./news";
 import { SCHEMA_HINT, runModelQuery } from "./subgraph";
@@ -687,6 +688,10 @@ export const TOOLS: ToolSpec[] = [
           hyperliquidOpenInterestContracts: o.hlOi == null ? null : Math.round(o.hlOi),
           hyperliquidContracts1hChangePercent: round(o.hlOiChangePct),
           regime: o.regime,
+          // The label with its meaning attached, never the label alone. Given
+          // only the words, a reader works direction out from the sign of open
+          // interest and gets short covering exactly backwards.
+          regimeMeans: REGIME_MEANING[o.regime as keyof typeof REGIME_MEANING] ?? null,
         }));
 
       // The onchain venue, which the board shows and the assistant could not
@@ -725,7 +730,7 @@ export const TOOLS: ToolSpec[] = [
         hyperliquidVenue: venue,
         hyperliquidLargestLiquidations: liqs,
         interpretationNotes:
-          "Annualised percent, comparable across contracts. Binance is a centralised exchange and Hyperliquid is the onchain perp venue: do not describe either as the other. Positive means longs pay shorts to hold, so the crowd is long. Negative means shorts pay, which is rarer and usually sharper. Ranked by distance from zero, so the first rows are the crowded ones. A rate in single digits is unremarkable, and a wide gap between the two venues is the interesting case. Open interest is dollars on Binance and contracts on Hyperliquid, which are different units and must never be added together or compared as if they were the same number. Direction comes from the contract change, never the dollar one, because notional rises with price and would call every rally new longs. A null Hyperliquid reading means the coin is not listed there, not that it is zero. The Hyperliquid venue block is the whole exchange over the last daily bar rather than one asset: a buy share near fifty percent is the resting state, and a reading far from it says the onchain crowd was lifting offers or hitting bids in aggregate. Liquidations are forced closes, so a CLOSE_LONG is a long being sold out of its position and is selling pressure that happens whatever the holder wanted.",
+          "Annualised percent, comparable across contracts. Binance is a centralised exchange and Hyperliquid is the onchain perp venue: do not describe either as the other. Positive means longs pay shorts to hold, so the crowd is long. Negative means shorts pay, which is rarer and usually sharper. Ranked by distance from zero, so the first rows are the crowded ones. A rate in single digits is unremarkable, and a wide gap between the two venues is the interesting case. Open interest is dollars on Binance and contracts on Hyperliquid, which are different units and must never be added together or compared as if they were the same number. Direction comes from the contract change, never the dollar one, because notional rises with price and would call every rally new longs. Each regime carries a regimeMeans field: use it, and never work the direction out from whether open interest rose or fell. Short covering is upward pressure although open interest is falling, because shorts closing are buying; long liquidation is downward pressure for the mirror reason. Reading the label alone gets both of them exactly backwards. A null Hyperliquid reading means the coin is not listed there, not that it is zero. The Hyperliquid venue block is the whole exchange over the last daily bar rather than one asset: a buy share near fifty percent is the resting state, and a reading far from it says the onchain crowd was lifting offers or hitting bids in aggregate. Liquidations are forced closes, so a CLOSE_LONG is a long being sold out of its position and is selling pressure that happens whatever the holder wanted.",
       };
     },
   },

@@ -1,4 +1,5 @@
 import "server-only";
+import { REGIME_MEANING } from "@/app/api/derivs/route";
 import { askReady, chat, plain, readRoute, tighten, type Session } from "./ask";
 // Compact, not exact. The note is prose: "$48,232,273.99 left USDT reserves"
 // is a number nobody reads aloud, and it spends the completion budget on
@@ -155,6 +156,7 @@ async function evidence(origin: string): Promise<{ facts: Record<string, unknown
     facts.openInterestRegimes = (der.oi ?? []).slice(0, 5).map((o) => ({
       asset: o.sym,
       regime: o.regime,
+      meaning: REGIME_MEANING[o.regime as keyof typeof REGIME_MEANING] ?? null,
       contractChange24hPercent: round(o.oiChangePct),
     }));
     if (der.hlPlatform && der.hlPlatform.volumeUsd > 0) {
@@ -189,12 +191,15 @@ async function evidence(origin: string): Promise<{ facts: Record<string, unknown
 
 const SYSTEM = `You write the morning note for a crypto market terminal. You are given every reading it has and nothing else.
 
-- Four to six sentences. Plain flowing prose, no headings, no bullets, no line breaks.
-- Open with the single thing that matters most this morning and say why it matters, not merely what it is.
-- Then the supporting picture in two or three sentences, joining readings that agree or disagree with each other. Joining them is the reason this is written rather than listed.
+- Three to five sentences, and every sentence under twenty-five words. Plain prose, no headings, no bullets, no line breaks.
+- Terse. A reader gives this twenty seconds before the desks below it. Cut every clause that carries no number and no consequence.
+- Open with the single thing that matters most this morning and say why it matters, not merely what it is. Begin with the fact. Never open by announcing what the note is about, so no "the biggest risk today is" and no "the key thing to watch is".
+- Then the supporting picture in one or two sentences, joining readings that agree or disagree with each other. Joining them is the reason this is written rather than listed.
 - Close with the one thing worth watching today. Not a forecast: name the reading that would change the picture.
+- No connective padding. Phrases like "adding to that pressure", "underscoring", "this suggests" and "meanwhile" carry nothing a reader cannot see from the two facts either side of them.
 - Every number must come from the readings given. If something is not in them, you do not know it.
 - Use the reading already attached to a flow rather than deriving direction from a sign. Coins arriving is supply to sell; stablecoins arriving is buying power.
+- Same for an open interest regime: use its "meaning" field and never infer direction from whether open interest rose or fell. Short covering is upward pressure even though open interest is falling, and long liquidation is downward pressure for the same reason in reverse.
 - Do not walk the list naming a figure per asset. Name at most three assets, and only where one is the exception that makes the general picture mean something.
 - Never recommend a trade or say what to buy or sell. Describe conditions.
 - Money is already formatted. Write it exactly as given, such as $168.1m.
@@ -219,7 +224,7 @@ export async function writeBrief(origin: string): Promise<Brief | null> {
           JSON.stringify(facts, null, 1),
           "",
           missing.length ? `These desks could not be read: ${missing.join(", ")}. Do not mention them.` : "",
-          "Four to six sentences. Open with what matters most and close with what to watch. Describe conditions and never recommend a trade.",
+          "Three to five sentences, none over twenty-five words. Open on the fact that matters most and close with what to watch. Describe conditions and never recommend a trade.",
         ]
           .filter(Boolean)
           .join("\n"),

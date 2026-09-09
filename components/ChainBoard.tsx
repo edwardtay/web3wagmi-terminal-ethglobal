@@ -226,7 +226,10 @@ export function ChainBoard() {
                   <th className="num">7d</th>
                   <th className="num">30d</th>
                   <Th label="Share" hint="Share of total chain TVL" num />
-                  <th>90d</th>
+                  {/* The last column, so it can have room: a 110px trace of
+                      ninety days was three months squeezed into an inch, and
+                      the shape is the whole reason the column exists. */}
+                  <Th label="90d" hint="Total value locked over the last ninety days, drawn to its own range rather than a shared one, so the shape is comparable between rows and the height is not." />
                 </tr>
               </thead>
               <tbody>
@@ -259,7 +262,7 @@ export function ChainBoard() {
                     </td>
                     <td className="num">{pctPlain(r.share, r.share >= 1 ? 1 : 2)}</td>
                     <td>
-                      <Sparkline data={r.spark} width={110} height={26} />
+                      <Sparkline data={r.spark} width={190} height={30} />
                     </td>
                   </tr>
                 ))}

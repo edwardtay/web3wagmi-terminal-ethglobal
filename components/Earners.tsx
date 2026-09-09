@@ -218,7 +218,7 @@ export function Earners() {
 
   return (
     <Section
-      title="Who earns"
+      title="Fees and revenue"
       id="earners"
       hint="Fees are what users paid. Part is the suppliers' income and never touches the protocol; the rest it keeps, and part of that reaches token holders. Every column sorts, because who earns the most and who returns the most to holders are different questions with different answers. Profit is not shown: it would be revenue minus token emissions, that series is not published here, and combining two adapters would give a figure that looks precise and is not comparable between rows."
       right={

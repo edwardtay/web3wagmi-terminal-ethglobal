@@ -16,6 +16,7 @@ export const SECTION_GROUPS: { label: string; items: { id: string; label: string
       { id: "brief", label: "The brief" },
       { id: "signals", label: "What changed" },
       { id: "snapshot", label: "Snapshot" },
+      { id: "earners", label: "Fees and revenue" },
     ],
   },
   {
@@ -49,7 +50,6 @@ export const SECTION_GROUPS: { label: string; items: { id: string; label: string
     label: "On-chain",
     items: [
       { id: "netflow", label: "Exchange flow" },
-      { id: "earners", label: "Who earns" },
       { id: "dex", label: "DEX pools" },
       { id: "chains", label: "Chains" },
       { id: "protocols", label: "Protocols" },
