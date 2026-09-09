@@ -41,6 +41,7 @@ const OPENERS = [
   "What is unusual right now?",
   "Is there selling pressure building?",
   "How concentrated is WBTC ownership?",
+  "What is happening on Hyperliquid?",
   "How does Aave compare to Compound?",
 ];
 

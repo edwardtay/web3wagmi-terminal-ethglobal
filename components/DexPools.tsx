@@ -73,12 +73,27 @@ function riskFlags(p: DexPool): string[] {
  * (Robinhood)". A venue name that already carries the chain in brackets does
  * not need the chain repeated above it.
  */
+/** Names the same chain answers to, so a match is not defeated by spelling. */
+const CHAIN_ALIASES: Record<string, string[]> = {
+  "bnb chain": ["bsc", "binance smart chain", "bnb"],
+  ethereum: ["eth", "mainnet"],
+  "op mainnet": ["optimism", "op"],
+  "arbitrum one": ["arbitrum", "arb"],
+  polygon: ["matic", "pol"],
+};
+
 function venueLabel(network: string, dex: string): string {
   const n = (network || "").trim();
   const d = (dex || "").trim();
   if (!d) return n;
   if (!n) return d;
-  return d.toLowerCase().includes(n.toLowerCase()) ? d : `${n} · ${d}`;
+
+  // The venue name usually carries its chain in brackets, and the two sources
+  // spell it differently: "BNB Chain" above "Pancakeswap V3 (BSC)" is one chain
+  // named twice. Matching on the alias as well as the name catches that.
+  const lower = d.toLowerCase();
+  const names = [n.toLowerCase(), ...(CHAIN_ALIASES[n.toLowerCase()] ?? [])];
+  return names.some((name) => lower.includes(name)) ? d : `${n} · ${d}`;
 }
 
 export function DexPools() {

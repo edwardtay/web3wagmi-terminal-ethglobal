@@ -246,7 +246,6 @@ export function YieldScanner() {
               <span className="inline-block h-1.5 w-3 rounded-full" style={{ background: "var(--gold)" }} />
               reward APY (token emissions)
             </span>
-            <span>Source: DefiLlama yields, refreshed every 15 minutes.</span>
           </div>
         </>
       )}

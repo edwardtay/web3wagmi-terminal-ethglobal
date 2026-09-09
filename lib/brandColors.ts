@@ -20,7 +20,11 @@ const BRAND: Record<string, string> = {
   // Chains
   ethereum: "#627eea",
   bitcoin: "#f7931a",
-  solana: "#14f195",
+  // Solana's mark is a purple to green gradient and a flat colour has to pick
+  // one. The green end reads as "up" beside a table of green and red change
+  // cells, and next to BSC's yellow it looked like a status rather than an
+  // identity. Purple is the half people recognise.
+  solana: "#9945ff",
   bsc: "#f0b90b",
   "bnb chain": "#f0b90b",
   base: "#0052ff",
@@ -52,7 +56,9 @@ const BRAND: Record<string, string> = {
   tether: "#009393",
   usdc: "#2775ca",
   dai: "#f5ac37",
-  usds: "#1aab9b",
+  // Sky's USDS. Not a teal: USDT is already #009393 and the two were
+  // indistinguishable in a share bar where they sit side by side.
+  usds: "#f5a623",
   usde: "#2152f3",
   frax: "#000000",
   pyusd: "#0070ba",
@@ -60,7 +66,7 @@ const BRAND: Record<string, string> = {
   fdusd: "#c8a13a",
   tusd: "#1c5cff",
   busd: "#f0b90b",
-  susds: "#1aab9b",
+  susds: "#f5a623",
 };
 
 /**

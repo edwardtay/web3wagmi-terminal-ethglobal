@@ -13,8 +13,16 @@ export const SECTION_GROUPS: { label: string; items: { id: string; label: string
   {
     label: "Glance",
     items: [
+      { id: "brief", label: "The brief" },
       { id: "signals", label: "What changed" },
       { id: "snapshot", label: "Snapshot" },
+    ],
+  },
+  {
+    label: "Market wide",
+    items: [
+      { id: "stress", label: "Stress index" },
+      { id: "live", label: "Live board" },
     ],
   },
   // The focused instrument gets its own group because it is the one part of
@@ -30,13 +38,6 @@ export const SECTION_GROUPS: { label: string; items: { id: string; label: string
     ],
   },
   {
-    label: "Market wide",
-    items: [
-      { id: "live", label: "Live board" },
-      { id: "stress", label: "Stress index" },
-    ],
-  },
-  {
     label: "Derivatives",
     items: [
       { id: "funding", label: "Funding" },
@@ -48,6 +49,7 @@ export const SECTION_GROUPS: { label: string; items: { id: string; label: string
     label: "On-chain",
     items: [
       { id: "netflow", label: "Exchange flow" },
+      { id: "earners", label: "Who earns" },
       { id: "dex", label: "DEX pools" },
       { id: "chains", label: "Chains" },
       { id: "protocols", label: "Protocols" },

@@ -148,17 +148,27 @@ export function Composites() {
         }
         hint="A composite of realised and implied volatility, funding, stablecoin peg deviation, correlation and drawdown. The percentile is against its own last 365 days, which is the only thing that makes a score out of 100 mean anything."
       />
+      {/* One card, two horizons.
+          These were two cards showing the same measure at two speeds, which
+          made the reader compare across a card boundary to get the thing that
+          matters: the gap between them is how recent the strength is. Side by
+          side, that subtraction is done by looking. */}
       <Stat
-        label="Above 50-day average"
-        value={share(b.above50)}
-        sub={b.above50 ? `${b.above50.n} of ${b.above50.total} pairs are in an uptrend by this measure` : undefined}
-        hint="Share of the top 100 USDT spot pairs trading above their own 50 day moving average. A market where price is up and breadth is not is being carried by a few names."
-      />
-      <Stat
-        label="Above 200-day average"
-        value={share(b.above200)}
-        sub={b.above200 ? `${b.above200.n} of ${b.above200.total} pairs, the slower line` : undefined}
-        hint="The same count against the 200 day average, which is the slower line. The gap between this and the 50 day figure is how recent the strength is."
+        label="Trend breadth"
+        value={
+          <span className="flex flex-wrap items-baseline gap-x-2">
+            <span>{share(b.above50)}</span>
+            <span className="text-[11px] font-normal text-[var(--text3)]">50d</span>
+            <span className="text-[var(--text2)]">{share(b.above200)}</span>
+            <span className="text-[11px] font-normal text-[var(--text3)]">200d</span>
+          </span>
+        }
+        sub={
+          b.above50 && b.above200
+            ? `${b.above50.n} of ${b.above50.total} above the fast line, ${b.above200.n} of ${b.above200.total} above the slow one`
+            : undefined
+        }
+        hint="Share of the top 100 USDT spot pairs trading above their own 50 and 200 day moving averages. A market where price is up and breadth is not is being carried by a few names, and the gap between the two figures is how recent the strength is: a high 50 day reading against a low 200 day one is a rally that has not been going long."
       />
       <Stat
         label="Rising vs falling, 24h"

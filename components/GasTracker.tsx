@@ -96,12 +96,9 @@ export function GasTracker() {
             <span>
               pricing {num(gasUnits ?? 0, 0)} gas units
             </span>
-            {live.length > 1 && min > 0 && (
-              <span>
-                spread{" "}
-                <span className="font-semibold text-[var(--text)]">{num(max / min, 0)}x</span> cheapest to dearest
-              </span>
-            )}
+            {/* The spread multiple is gone. The table below is sorted by cost
+                and shows both ends, so a ratio between them restated what the
+                first and last rows already say. */}
           </div>
 
           {/* A table, not cards. Every chain carries the same six figures and the

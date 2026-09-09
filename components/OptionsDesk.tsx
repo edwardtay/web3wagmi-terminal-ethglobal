@@ -452,6 +452,7 @@ export function OptionsDesk() {
         {/* -------------------------------------------------- term structure -- */}
         <Panel
           title="IV term structure"
+          hint="At-the-money implied volatility, annualised, plotted by days to expiry. The violet dots are quarterly expiries, which carry most of the open interest and so anchor the curve."
           className="lg:col-span-1"
           right={
             <span className="pill whitespace-nowrap" style={{ color: shapeColor }}>
@@ -460,9 +461,7 @@ export function OptionsDesk() {
           }
         >
           <TermCurve rows={rows} />
-          <div className="mt-1 break-words text-[11px] leading-snug text-[var(--text3)]">
-            ATM implied vol, annualised, by days to expiry. Violet dots are quarterly expiries.
-          </div>
+          
         </Panel>
 
         {/* ---------------------------------------------------- max pain x2 -- */}

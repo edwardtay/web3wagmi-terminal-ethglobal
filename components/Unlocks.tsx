@@ -30,9 +30,9 @@ function Row({ r, maxPct }: { r: UnlockRow; maxPct: number }) {
               was the same judgement said twice and in a louder voice. */}
           <span className="text-[11px] text-[var(--text2)]">{r.name}</span>
         </div>
-        {r.recipients.length > 0 && (
-          <div className="mt-0.5 text-[10px] text-[var(--text3)]">{r.recipients.join(", ")}</div>
-        )}
+        {/* Who receives the tokens is not shown. Nearly every row reads
+            "Team, Investors, Community" in some order, so it separated nothing,
+            and it was the longest text in the table on the narrowest column. */}
       </td>
       <td className="whitespace-nowrap">
         <div className="font-mono font-semibold text-[var(--text)]">{dateLabel(r.date)}</div>

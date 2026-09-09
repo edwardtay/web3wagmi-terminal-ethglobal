@@ -116,7 +116,7 @@ export function askReady(): boolean {
  * No revalidate window of our own: the route being called already has one, and
  * a second layer here only adds a way for the two to disagree.
  */
-async function readRoute<T>(origin: string, path: string): Promise<T | null> {
+export async function readRoute<T>(origin: string, path: string): Promise<T | null> {
   // A cold flow desk builds 176 metered reads before it answers, and every
   // check against the public URL was served by the CDN, so the container's own
   // cache can still be cold when the first question arrives. Timing out here
@@ -190,6 +190,26 @@ function usd(n: number | null): string | null {
   return `${sign}$${v.toFixed(0)}`;
 }
 
+/**
+ * The same figure, with enough precision to survive being ranked.
+ *
+ * usd() rounds to one decimal, which is right for a single number in a
+ * sentence and wrong in an ordered list: BSC at $1,603,670, Robinhood Chain at
+ * $1,580,488 and Canton at $1,570,300 all print as "$1.6m", and the model
+ * reading them back reported a three-way tie that does not exist. Two decimals
+ * separate them. The rank field is the real guard, this is so the figures the
+ * model quotes agree with it.
+ */
+function usdRanked(n: number | null): string | null {
+  if (n == null || !Number.isFinite(n)) return null;
+  const sign = n < 0 ? "-" : "";
+  const v = Math.abs(n);
+  if (v >= 1e9) return `${sign}$${(v / 1e9).toFixed(2)}b`;
+  if (v >= 1e6) return `${sign}$${(v / 1e6).toFixed(2)}m`;
+  if (v >= 1e3) return `${sign}$${(v / 1e3).toFixed(1)}k`;
+  return `${sign}$${v.toFixed(0)}`;
+}
+
 function reading(kind: string, flow24h: number | null, vsVolume: number | null): string {
   if (flow24h == null) return "No reading: not enough of the sample answered.";
   const size =
@@ -209,6 +229,19 @@ function reading(kind: string, flow24h: number | null, vsVolume: number | null):
     : "Coins left exchanges. That reduces the supply available to sell at short notice, which is the constructive direction.";
 }
 
+interface RevenuePayload {
+  apps?: EarnerLike[];
+  chains?: EarnerLike[];
+}
+
+interface EarnerLike {
+  name: string;
+  category: string | null;
+  fees: Partial<Record<string, number | null>>;
+  revenue: Partial<Record<string, number | null>>;
+  takeRate: number | null;
+}
+
 interface StandardsPayload {
   rows?: {
     label: string;
@@ -217,6 +250,9 @@ interface StandardsPayload {
     tvlUsd: number | null;
     revenueUsd: number | null;
     users: number | null;
+    revenue7dUsd: number | null;
+    takePct: number | null;
+    staleDays: number | null;
     error?: string;
   }[];
   answered?: number;
@@ -234,6 +270,16 @@ interface DerivsPayload {
     /** CEX minus DEX, in annualised percent. */
     spread: number | null;
   }[];
+  hlLiquidations?: { at: string; coin: string; direction: string; notional: number }[];
+  hlPlatform?: {
+    volumeUsd: number;
+    buyUsd: number;
+    sellUsd: number;
+    transactions: number;
+    activeCoins: number;
+    liquidationsUsd: number;
+    liquidationsCount: number;
+  } | null;
   oi?: {
     sym: string;
     /** Notional on the Binance perp. */
@@ -309,7 +355,7 @@ export const TOOLS: ToolSpec[] = [
   {
     name: "compare_protocols",
     description:
-      "Compare DeFi protocols on the same footing: total value locked, cumulative supply side revenue, and cumulative unique users, across lending markets, DEXes and staking protocols. Use it for questions that put protocols side by side, ask which is largest, or ask how one compares to another. It answers about protocols, not about tokens or prices.",
+      "Compare DeFi protocols on the same footing: total value locked, fees earned over the past seven days, the share of those fees the protocol kept rather than paid out, cumulative supply side revenue, and cumulative unique users, across lending markets, DEXes and staking protocols. Use it for questions that put protocols side by side, ask which is largest, or ask how one compares to another. It answers about protocols, not about tokens or prices.",
     parameters: {
       type: "object",
       properties: {
@@ -329,11 +375,19 @@ export const TOOLS: ToolSpec[] = [
         .filter((r) => !r.error)
         .filter((r) => !want || r.label.toLowerCase().includes(want) || (r.name ?? "").toLowerCase().includes(want))
         .sort((a, b) => (b.tvlUsd ?? 0) - (a.tvlUsd ?? 0))
-        .map((r) => ({
+        // Whether a week is reportable and what the take rate is are decided in
+        // lib/standards.ts, so the assistant and the panel cannot quote
+        // different numbers for the same protocol.
+        .map((r, i) => ({
+          rankByTotalValueLocked: i + 1,
           protocol: r.label,
           category: r.type,
-          totalValueLocked: usd(r.tvlUsd),
-          cumulativeSupplySideRevenue: usd(r.revenueUsd),
+          totalValueLocked: usdRanked(r.tvlUsd),
+          feesLast7d: r.staleDays === null ? usdRanked(r.revenue7dUsd) : null,
+          shareOfFeesKeptByProtocol: r.takePct === null ? null : `${r.takePct.toFixed(0)}%`,
+          indexerStopped:
+            r.staleDays === null ? undefined : `${r.staleDays} days ago, so no recent window is available`,
+          cumulativeSupplySideRevenue: usdRanked(r.revenueUsd),
           cumulativeUniqueUsers: r.users,
         }));
 
@@ -349,7 +403,60 @@ export const TOOLS: ToolSpec[] = [
         howItIsPossible:
           "One GraphQL query, sent unchanged to every protocol below, because they publish a standardized subgraph schema on The Graph rather than each their own.",
         interpretationNotes:
-          "Total value locked and revenue are the protocol's own figures under a shared schema, so they are comparable across protocols in a way that separately defined metrics are not. Cumulative means since inception, not over a window, so a long lived protocol will lead on users and revenue regardless of its current size. These are protocol wide totals on a daily snapshot, not a live tape, so never present them as a current market reading.",
+          "Each row is one deployment on Ethereum mainnet, not a protocol across every chain and version, and the figures are the schema's own definitions: for a lending market, total value locked means total deposits before subtracting what has been borrowed against them. Say the scope when you quote a figure, because a reader comparing it to an aggregator like DefiLlama will otherwise think it is wrong: Aave v3 reads about $24.7b here and about $18.3b there, and the difference is scope and definition rather than an error. Total value locked and revenue are the protocol's own figures under a shared schema, so they are comparable across protocols in a way that separately defined metrics are not. Cumulative means since inception, not over a window, so a long lived protocol will lead on users and revenue regardless of its current size. These are protocol wide totals on a daily snapshot, not a live tape, so never present them as a current market reading. The seven day fee figure and the share kept come from the same one query as everything else, because the shared schema defines supply side and protocol side as separate fields; no aggregator publishes that split, so it is worth naming when it answers the question. A share of zero means the subgraph maps the whole fee to the supply side, as Lido's does, rather than that the protocol earns nothing. A null share means the figure is withheld rather than that the protocol keeps nothing: either its indexer has stopped, in which case indexerStopped says so, or it earns too little for the ratio to be a statement about a business, which is the case for protocols that have wound down. Never rank, compare or pick a winner on a null, and when asked which protocol keeps the biggest share, answer from the ones that have a share.",
+      };
+    },
+  },
+  {
+    name: "fee_leaders",
+    description:
+      "Which apps or chains earned the most in fees, and how much of that they kept as revenue, over a chosen window: 24 hours, 7 days, 30 days, a year, or all time. Covers the whole market, hundreds of protocols, not a curated list. Use it for any question about who earns the most, what is most profitable, where the money is going, or how one app's take compares to another's. Use compare_protocols instead when the question is about total value locked or about the nine protocols on the standardized schema.",
+    parameters: {
+      type: "object",
+      properties: {
+        kind: {
+          type: "string",
+          enum: ["apps", "chains"],
+          description: "Applications, or the chains themselves. Defaults to apps.",
+        },
+        period: {
+          type: "string",
+          enum: ["d1", "d7", "d30", "y1", "all"],
+          description: "The window. d1 is 24 hours, d7 a week, d30 a month, y1 a year. Defaults to d7.",
+        },
+      },
+    },
+    async run(args, origin) {
+      const d = await readRoute<RevenuePayload>(origin, "/api/revenue");
+      const kind = args.kind === "chains" ? "chains" : "apps";
+      const rows = d?.[kind];
+      if (!rows?.length) return { error: "The fee and revenue read is unavailable." };
+
+      const period = typeof args.period === "string" && ["d1", "d7", "d30", "y1", "all"].includes(args.period)
+        ? args.period
+        : "d7";
+
+      // Ranked on the window asked for rather than on the stored order, which
+      // is by 30 days: "most fees this week" and "most fees this year" are
+      // different questions and the rows carry every window to answer both.
+      const ranked = [...rows]
+        .filter((r) => typeof r.fees?.[period] === "number")
+        .sort((a, b) => (b.fees[period] as number) - (a.fees[period] as number))
+        .slice(0, 15)
+        .map((r, i) => ({
+          rank: i + 1,
+          name: r.name,
+          category: r.category,
+          fees: usdRanked(r.fees[period] ?? null),
+          keptAsRevenue: usdRanked(r.revenue[period] ?? null),
+          shareKeptOver30d: r.takeRate === null ? null : `${(r.takeRate * 100).toFixed(0)}%`,
+        }));
+
+      return {
+        window: { d1: "the past 24 hours", d7: "the past 7 days", d30: "the past 30 days", y1: "the past year", all: "all time" }[period],
+        [kind]: ranked,
+        interpretationNotes:
+          "Fees are what users paid. Revenue is the part the protocol kept rather than passing to suppliers, liquidity providers or stakers, so a large fee number with a small revenue number is a protocol running thin on purpose. Where revenue is null the source does not split it out for that protocol, which is not the same as zero, so do not call it unprofitable. Stablecoin issuers appear here because their reserve yield is booked as fees, and they keep effectively all of it, which is why they lead: say what they are when quoting them rather than presenting them beside a DEX without comment. Share kept is measured over 30 days regardless of the window asked for. Rank is the order on the window asked for and it is authoritative: rank 1 leads, and two rows never share a rank. Figures are rounded, so near neighbours can print the same and are still ordered. Never call them tied.",
       };
     },
   },
@@ -477,7 +584,7 @@ export const TOOLS: ToolSpec[] = [
   {
     name: "derivatives",
     description:
-      "Perpetual funding rates and open interest, across both venues. Use for questions about positioning, crowding, leverage, what traders are paying to hold, or how much is at risk on each venue.",
+      "Perpetual funding, open interest across four venues, and Hyperliquid itself: the whole onchain exchange over the last day, its buy against sell split, and its largest forced liquidations. Use for questions about positioning, crowding, leverage, what traders pay to hold, how much is at risk on each venue, or anything asking specifically about Hyperliquid.",
     parameters: {
       type: "object",
       properties: {
@@ -530,11 +637,43 @@ export const TOOLS: ToolSpec[] = [
           regime: o.regime,
         }));
 
+      // The onchain venue, which the board shows and the assistant could not
+      // see. Three Hyperliquid datasets were being read and only two fields of
+      // one of them reached here, so a question about Hyperliquid got funding
+      // and open interest and nothing about forced closes or which way the
+      // whole venue was leaning.
+      const hlp = d.hlPlatform ?? null;
+      const venue = hlp
+        ? {
+            venue: "Hyperliquid",
+            window: "last daily bar",
+            volume: usd(hlp.volumeUsd),
+            buySharePercent: hlp.volumeUsd > 0 ? round((hlp.buyUsd / hlp.volumeUsd) * 100) : null,
+            liquidationsVolume: usd(hlp.liquidationsUsd),
+            liquidationsCount: hlp.liquidationsCount,
+            marketsTraded: hlp.activeCoins,
+          }
+        : null;
+
+      const liqs = (d.hlLiquidations ?? [])
+        .filter((l) => !want || l.coin === want)
+        .slice(0, 6)
+        .map((l) => ({
+          at: l.at,
+          asset: l.coin,
+          // The venue's own label, not ours. A CLOSE_LONG is a long being
+          // forced out, which is selling.
+          event: l.direction,
+          notional: usd(l.notional),
+        }));
+
       return {
         funding: rows,
         openInterest: oiRows,
+        hyperliquidVenue: venue,
+        hyperliquidLargestLiquidations: liqs,
         interpretationNotes:
-          "Annualised percent, comparable across contracts. Binance is a centralised exchange and Hyperliquid is the onchain perp venue: do not describe either as the other. Positive means longs pay shorts to hold, so the crowd is long. Negative means shorts pay, which is rarer and usually sharper. Ranked by distance from zero, so the first rows are the crowded ones. A rate in single digits is unremarkable, and a wide gap between the two venues is the interesting case. Open interest is dollars on Binance and contracts on Hyperliquid, which are different units and must never be added together or compared as if they were the same number. Direction comes from the contract change, never the dollar one, because notional rises with price and would call every rally new longs. A null Hyperliquid reading means the coin is not listed there, not that it is zero.",
+          "Annualised percent, comparable across contracts. Binance is a centralised exchange and Hyperliquid is the onchain perp venue: do not describe either as the other. Positive means longs pay shorts to hold, so the crowd is long. Negative means shorts pay, which is rarer and usually sharper. Ranked by distance from zero, so the first rows are the crowded ones. A rate in single digits is unremarkable, and a wide gap between the two venues is the interesting case. Open interest is dollars on Binance and contracts on Hyperliquid, which are different units and must never be added together or compared as if they were the same number. Direction comes from the contract change, never the dollar one, because notional rises with price and would call every rally new longs. A null Hyperliquid reading means the coin is not listed there, not that it is zero. The Hyperliquid venue block is the whole exchange over the last daily bar rather than one asset: a buy share near fifty percent is the resting state, and a reading far from it says the onchain crowd was lifting offers or hitting bids in aggregate. Liquidations are forced closes, so a CLOSE_LONG is a long being sold out of its position and is selling pressure that happens whatever the holder wanted.",
       };
     },
   },
@@ -560,7 +699,8 @@ const PICKING = `You answer crypto market questions for a terminal by calling it
 - Selling pressure means coins arriving, positioning and liquidations. A stablecoin inflow is the other side of that picture, not an answer to it.
 - Asked why something moved or what happens next, also read market_coverage.
 - The dislocation queue ranks what moved far from its own reference. It never holds a level. For a level, call the tool that has it.
-- A question comparing protocols, or asking which is largest, or how one stacks against another, is compare_protocols. It answers about protocols rather than tokens, and it is the only tool that spans many of them at once.
+- A question comparing protocols, or asking which is largest, or how one stacks against another, is compare_protocols. It answers about protocols rather than tokens, and it spans the nine on the standardized schema.
+- A question about who earns, who is most profitable, or which app or chain makes the most money is fee_leaders. It covers the whole market. compare_protocols covers nine protocols, so ranking earnings from it would name the biggest of nine as the biggest of all: never answer an earnings question from it.
 - You cover what this terminal measures: prices, funding, open interest, options, exchange flow, onchain liquidity and ownership. Asked to explain a concept or how a protocol works, call nothing.
 - When you have called every tool the question needs, reply with the single word DONE and nothing else. Never write the answer here. Another turn writes it, and anything you write in this one is discarded.`;
 
@@ -596,7 +736,7 @@ Other rules you do not break:
 - Money is already formatted. Write it exactly as given, such as $168.1m. Never reformat a number or expand it into digits.
 - Plain ASCII punctuation only. No em dashes or en dashes, no times sign, no approximately sign. Write "7.6x" and "minus 18", not "7.6 x" or "-18". Never write "it is not X, it is Y".`;
 
-interface ChatMessage {
+export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string | null;
   tool_calls?: { id: string; type: string; function: { name: string; arguments: string } }[];
@@ -604,7 +744,7 @@ interface ChatMessage {
 }
 
 interface ChatReply {
-  choices?: { message: ChatMessage }[];
+  choices?: { message: ChatMessage; finish_reason?: string }[];
   error?: { message?: string };
 }
 
@@ -643,7 +783,7 @@ function portable(m: ChatMessage): ChatMessage {
  * style rule against dashes is not negotiable here, and a prompt is the wrong
  * place to enforce something a replace can guarantee.
  */
-function plain(s: string): string {
+export function plain(s: string): string {
   return s
     .replace(/[\u2010-\u2015]/g, "-")
     .replace(/[\u2018\u2019]/g, "'")
@@ -710,6 +850,16 @@ export interface AskResult {
 /** Why the last call failed, so a dead answer says something useful. */
 let lastError: string | null = null;
 
+/**
+ * Whether the last completion was cut off rather than finished.
+ *
+ * The provider says so with finish_reason, and it matters because tighten()
+ * punctuates every fragment it keeps. A truncated final clause therefore came
+ * out with a full stop welded on: "and recent large liquidations are." reads as
+ * a finished sentence and is not one.
+ */
+let lastTruncated = false;
+
 /** One request to one provider. Returns the message, or the status that failed. */
 async function callProvider(
   base: string,
@@ -717,15 +867,16 @@ async function callProvider(
   model: string,
   messages: ChatMessage[],
   withTools: boolean,
-  timeoutMs = 45_000
-): Promise<{ message?: ChatMessage; status?: number; detail?: string }> {
+  timeoutMs = 45_000,
+  maxTokens = 800
+): Promise<{ message?: ChatMessage; status?: number; detail?: string; truncated?: boolean }> {
   // Every failure returns rather than throws. A timeout or a DNS failure here
   // was propagating out of the loop and reaching the caller as "the question
   // could not be answered", which is the route's catch-all and says nothing
   // about which provider failed or why. It also skipped the fallback entirely,
   // since a thrown primary never reached the second attempt.
   try {
-    return await request(base, key, model, messages, withTools, timeoutMs);
+    return await request(base, key, model, messages, withTools, timeoutMs, maxTokens);
   } catch (first) {
     // A connect timeout is not a verdict on the provider. Cloudflare fronts
     // both of these and a single handshake to one of its addresses stalls often
@@ -734,7 +885,7 @@ async function callProvider(
     // below is the better use of the time than a third.
     void first;
     try {
-      return await request(base, key, model, messages, withTools, timeoutMs);
+      return await request(base, key, model, messages, withTools, timeoutMs, maxTokens);
     } catch (e) {
     // undici reports every transport failure as the same bare "fetch failed",
     // which is useless for telling a DNS miss from a refused connection from a
@@ -754,8 +905,9 @@ async function callProvider(
 async function tryFallbacks(
   messages: ChatMessage[],
   withTools: boolean,
-  prefer?: string
-): Promise<{ message?: ChatMessage; model?: string }> {
+  prefer?: string,
+  maxTokens = 800
+): Promise<{ message?: ChatMessage; model?: string; truncated?: boolean }> {
   if (!FALLBACK_BASE || !FALLBACK_KEY) return {};
   const order = prefer ? [prefer, ...FALLBACK_MODELS.filter((m) => m !== prefer)] : FALLBACK_MODELS;
   for (const model of order) {
@@ -763,8 +915,8 @@ async function tryFallbacks(
     // of this path is that it runs when the fast one is gone, so timing it out
     // at the primary's budget defeats it. The first model tried here answered
     // correctly in 52 seconds and was cut off at 45.
-    const res = await callProvider(FALLBACK_BASE, FALLBACK_KEY, model, messages, withTools, 75_000);
-    if (res.message) return { message: res.message, model };
+    const res = await callProvider(FALLBACK_BASE, FALLBACK_KEY, model, messages, withTools, 75_000, maxTokens);
+    if (res.message) return { message: res.message, model, truncated: res.truncated };
     console.error(`[ask] fallback ${model} ${res.status}: ${res.detail}`);
   }
   return {};
@@ -776,8 +928,9 @@ async function request(
   model: string,
   messages: ChatMessage[],
   withTools: boolean,
-  timeoutMs: number
-): Promise<{ message?: ChatMessage; status?: number; detail?: string }> {
+  timeoutMs: number,
+  maxTokens: number
+): Promise<{ message?: ChatMessage; status?: number; detail?: string; truncated?: boolean }> {
   const res = await fetch(`${base}/chat/completions`, {
     method: "POST",
     headers: {
@@ -796,7 +949,7 @@ async function request(
       // a number severed from its units reads as a different number. The house
       // style still asks for two to four sentences; this is headroom for a
       // model that ignores that, not permission to ramble.
-      max_tokens: 800,
+      max_tokens: maxTokens,
       // Zero. The same question should give the same answer, and asking twice in
       // a demo and getting two readings of one number is worse than any gain
       // from varied phrasing.
@@ -825,7 +978,11 @@ async function request(
     return { status: res.status, detail };
   }
   const body = (await res.json()) as ChatReply;
-  return { message: body.choices?.[0]?.message };
+  const choice = body.choices?.[0];
+  // "length" means the completion was cut off rather than finished. Worth
+  // carrying, because a truncated answer is indistinguishable from a complete
+  // one by the time it reaches the text.
+  return { message: choice?.message, truncated: choice?.finish_reason === "length" };
 }
 
 /**
@@ -838,7 +995,7 @@ async function request(
  * timeout each time, and a question that needs three rounds would spend a
  * minute of that before saying anything.
  */
-interface Session {
+export interface Session {
   /** The fallback model that last answered, or null while on the primary. */
   fallbackModel: string | null;
 }
@@ -912,7 +1069,7 @@ function sentenceCount(text: string): number {
  * Anything genuinely misshapen is handled by the rewrite instead, which can
  * read the sentence and this cannot.
  */
-function tighten(text: string): string {
+export function tighten(text: string): string {
   const kept: string[] = [];
   for (const line of text.split("\n")) {
     const trimmed = line.trim();
@@ -928,6 +1085,21 @@ function tighten(text: string): string {
     if (body.endsWith(":")) continue;
 
     kept.push(/[.!?]$/.test(body) ? body : `${body}.`);
+  }
+
+  // A cut-off answer loses its last clause rather than gaining a full stop.
+  //
+  // Dropped by sentence rather than by line, which is the bug this replaces:
+  // the model usually writes one line, so popping a line did nothing and the
+  // fragment survived with a full stop welded on. A note ended "At." that way.
+  if (lastTruncated && kept.length) {
+    const joined = kept.join(" ");
+    const sentences = joined.split(/(?<=[.!?])\s+(?=[A-Z(])/).filter((s) => s.trim());
+    if (sentences.length > 1) {
+      sentences.pop();
+      kept.length = 0;
+      kept.push(sentences.join(" "));
+    }
   }
 
   let out = kept.join(" ").replace(/\s+/g, " ").trim();
@@ -1015,12 +1187,13 @@ function leaked(text: string): boolean {
  */
 async function callPrimary(
   messages: ChatMessage[],
-  withTools: boolean
-): Promise<{ message?: ChatMessage; status?: number; detail?: string }> {
+  withTools: boolean,
+  maxTokens: number
+): Promise<{ message?: ChatMessage; status?: number; detail?: string; truncated?: boolean }> {
   let last: { message?: ChatMessage; status?: number; detail?: string } = { status: 0 };
   for (let i = 0; i < KEYS.length; i++) {
     const at = (keyCursor + i) % KEYS.length;
-    const res = await callProvider(BASE, KEYS[at], MODEL, messages, withTools);
+    const res = await callProvider(BASE, KEYS[at], MODEL, messages, withTools, 45_000, maxTokens);
     if (res.message) {
       keyCursor = at;
       return res;
@@ -1035,10 +1208,20 @@ async function callPrimary(
   return last;
 }
 
-async function chat(
+export async function chat(
   messages: ChatMessage[],
   withTools: boolean,
-  session: Session
+  session: Session,
+  /**
+   * Completion ceiling.
+   *
+   * This model spends part of its completion budget on reasoning before it
+   * writes anything, and that share grows with the difficulty of the prompt.
+   * A survey over every desk reasons far longer than a single question, so
+   * 800 left almost nothing for the prose and the note came back one sentence
+   * long with the rest cut off.
+   */
+  maxTokens = 800
 ): Promise<ChatMessage | null> {
   if (KEYS.length === 0) {
     lastError = "No model key.";
@@ -1046,9 +1229,10 @@ async function chat(
   }
 
   if (session.fallbackModel) {
-    const stuck = await tryFallbacks(messages, withTools, session.fallbackModel);
+    const stuck = await tryFallbacks(messages, withTools, session.fallbackModel, maxTokens);
     if (stuck.message) {
       lastError = null;
+      lastTruncated = Boolean(stuck.truncated);
       session.fallbackModel = stuck.model ?? session.fallbackModel;
       return portable(stuck.message);
     }
@@ -1057,9 +1241,10 @@ async function chat(
     session.fallbackModel = null;
   }
 
-  const primary = await callPrimary(messages, withTools);
+  const primary = await callPrimary(messages, withTools, maxTokens);
   if (primary.message) {
     lastError = null;
+    lastTruncated = Boolean(primary.truncated);
     return portable(primary.message);
   }
 
@@ -1069,9 +1254,10 @@ async function chat(
 
   const worthRetrying = primary.status != null && RETRYABLE.has(primary.status);
   if (worthRetrying) {
-    const second = await tryFallbacks(messages, withTools);
+    const second = await tryFallbacks(messages, withTools, undefined, maxTokens);
     if (second.message) {
       lastError = null;
+      lastTruncated = Boolean(second.truncated);
       session.fallbackModel = second.model ?? null;
       return portable(second.message);
     }
@@ -1266,7 +1452,7 @@ export async function ask(question: string, origin: string, focus?: string): Pro
           // Last line on purpose. The model follows the instruction it read
           // most recently, and every earlier attempt to hold the length put
           // this rule above a page of evidence, where it was reliably ignored.
-          "Write two to four sentences of flowing prose and stop. No headings, no bullet points, no bold, no line breaks, no labels such as \"Short answer\" or \"Here is what the data shows\". Begin with the finding itself rather than with a description of what you are about to say.",
+          "Write two to four sentences of flowing prose and stop. No headings, no bullet points, no bold, no line breaks, no labels such as \"Short answer\" or \"Here is what the data shows\". Begin with the finding itself rather than with a description of what you are about to say. Do not walk the list naming a reading for each asset in turn: that is the panel read aloud, it runs past the length every time, and it buries the finding in a roll call. Name at most two assets, and only where one is the exception that makes the general reading mean something.",
         ]
           .filter(Boolean)
           .join("\n"),

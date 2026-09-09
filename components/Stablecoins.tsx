@@ -149,11 +149,11 @@ function Asset({ row }: { row: StableRow }) {
       </div>
       <div className="text-[11px] leading-snug text-[var(--text2)]">{row.name}</div>
       <div className="mt-0.5 flex flex-wrap gap-1">
-        {row.mechanism && (
-          <span className="whitespace-nowrap rounded px-1 py-px font-mono text-[9px] font-bold uppercase tracking-wide text-[var(--text3)]" style={{ background: "var(--surface2)" }}>
-            {row.mechanism}
-          </span>
-        )}
+        {/* The backing mechanism is not shown. It repeated on almost every row,
+            it does not change between refreshes, and it is not what the panel
+            measures: a fiat backed coin can break its peg and a crypto backed
+            one can hold. The yield flag stays, because that one explains why a
+            row sits above the peg by design. */}
         {row.yieldBearing && (
           <span
             className="whitespace-nowrap rounded px-1 py-px font-mono text-[9px] font-bold uppercase tracking-wide"
@@ -220,7 +220,10 @@ export function Stablecoins() {
         </Panel>
       ) : (
         <div className="space-y-4">
-          <Panel title="Headline">
+          <Panel
+            title="Headline"
+            hint="Growing supply means fresh dollars minted onchain, which is buying power waiting to be deployed; shrinking supply means coins redeemed for dollars off-chain, which is capital leaving the system. Supply moves slowly, so the 30 day line is the one that carries a signal and the 7 day one is mostly noise."
+          >
             <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
               <Stat
                 label="Total USD supply"
@@ -266,11 +269,11 @@ export function Stablecoins() {
               </div>
             )}
 
-            <p className="mt-3 text-[11px] leading-relaxed text-[var(--text2)]">
-              {growing
-                ? "Supply is growing. Fresh dollars are being minted on-chain, which is buying power waiting to be deployed."
-                : "Supply is shrinking. Coins are being redeemed for dollars off-chain, which is capital leaving the system."}{" "}
-              Supply moves slowly, so read the 30d line before the 7d one.
+            {/* The verdict stays, the mechanism and the caveat move behind the
+                panel mark. Three sentences under a chart is a paragraph a
+                reader skips on the second visit. */}
+            <p className="mt-3 text-[12px] font-semibold leading-snug text-[var(--text)]">
+              {growing ? "Supply is growing" : "Supply is shrinking"}
             </p>
           </Panel>
 

@@ -113,17 +113,25 @@ function VenueBar({ venues }: { venues: { venue: string; usd: number }[] }) {
   const total = venues.reduce((a, v) => a + v.usd, 0);
   if (!total) return <span className="text-[var(--text3)]">n/a</span>;
   return (
-    <span
-      className="flex h-2.5 w-full min-w-[70px] overflow-hidden rounded-sm"
+    // A block element with a real width, not a flex span.
+    //
+    // A span inside a table cell has no width of its own, so w-full resolved to
+    // nothing and every segment computed a percentage of zero. The column
+    // rendered empty on every row while the data behind it was complete, which
+    // is the same class of failure as a half filled desk: the page looked fine
+    // and said nothing.
+    <div
+      className="flex h-2.5 w-[88px] overflow-hidden rounded-sm bg-[var(--surface2)]"
       title={venues.map((v) => `${v.venue} ${usdCompact(v.usd, 1)} (${((v.usd / total) * 100).toFixed(0)}%)`).join(" · ")}
     >
       {venues.map((v) => (
         <span
           key={v.venue}
+          className="h-full"
           style={{ width: `${(v.usd / total) * 100}%`, background: VENUE_COLOR[v.venue] ?? "var(--border)" }}
         />
       ))}
-    </span>
+    </div>
   );
 }
 

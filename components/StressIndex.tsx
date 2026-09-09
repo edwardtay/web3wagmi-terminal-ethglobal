@@ -219,7 +219,10 @@ function Body({ data, score }: { data: StressPayload; score: number }) {
             <Delta label="7d" from={data.prev7d} to={score} />
           </div>
         </div>
-        <div className="min-w-0">
+        {/* The svg scales to the row. Every other sparkline on the terminal
+            carries this rule and this one did not, so it drew at its intrinsic
+            190px and left the rest of the row empty. */}
+        <div className="min-w-0 flex-1 [&>svg]:w-full">
           <Sparkline data={data.spark} width={190} height={44} stroke={band.color} />
           <div className="mt-0.5 text-right font-mono text-[9px] text-[var(--text3)]">
             composite, last {Math.min(CSI_SPARK_DAYS, data.spark.length)}d

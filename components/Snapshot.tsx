@@ -252,8 +252,13 @@ export function Snapshot() {
               and on every other site they have open. What none of those give
               is whether this move is broad, whether the market is paying for
               risk beyond the majors, and how much leverage is behind it. */}
-          <Composites />
+          {/* The two readings a person looks for first, before the composites.
+              Total market cap and Fear and Greed are what a reader arrives
+              wanting; the breadth and correlation numbers are what they stay
+              for. Putting the composites above them made the first screen open
+              on the least familiar thing on the page. */}
           <GlobalRow data={data} />
+          <Composites />
         </div>
       )}
     </Section>

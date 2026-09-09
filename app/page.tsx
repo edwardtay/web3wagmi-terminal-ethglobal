@@ -7,6 +7,7 @@ import { Defer } from "@/components/Defer";
 import { FocusSection } from "@/components/FocusSection";
 import { normaliseSymbol } from "@/lib/symbolParam";
 import { SignalTape } from "@/components/SignalTape";
+import { MorningBrief } from "@/components/MorningBrief";
 
 import { Snapshot, Tape } from "@/components/Snapshot";
 import { FocusChart } from "@/components/FocusChart";
@@ -21,6 +22,7 @@ import { ExchangeNetflow } from "@/components/ExchangeNetflow";
 import { DexPools } from "@/components/DexPools";
 import { ChainBoard } from "@/components/ChainBoard";
 import { ProtocolMovers } from "@/components/ProtocolMovers";
+import { Earners } from "@/components/Earners";
 import { Stablecoins } from "@/components/Stablecoins";
 import { YieldScanner } from "@/components/YieldScanner";
 import { GasTracker } from "@/components/GasTracker";
@@ -68,10 +70,36 @@ export default async function Home({
         </h1>
 
         {/* ---- What needs attention, before any levels ---- */}
+        {/* The note first, then the evidence it was written from. */}
+        <MorningBrief />
+
         <SignalTape />
 
         {/* ---- Glance ---- */}
         <Snapshot />
+
+        {/* Market stress, beside the snapshot rather than below the focus.
+            It is a composite over the whole universe, so it belongs with the
+            other market-wide readings: sitting after one instrument's chart
+            made a market-wide score look like a comment on that instrument. */}
+        <Section
+          title="Market stress"
+          id="stress"
+        >
+          <StressIndex />
+        </Section>
+
+        {/* ---- Live tape ----
+            Before the focused instrument, not after it. The page reads broad to
+            specific: what the whole market is doing, then the one thing you
+            selected out of it. Reversed, the board arrived as an afterthought
+            to a chart the reader had already finished with. */}
+        <Section
+          title="Live board"
+          id="live"
+        >
+          <LiveBoard />
+        </Section>
 
         {/* ---- The focused instrument ----
             Everything that follows the focus control, contiguous and under a
@@ -88,23 +116,6 @@ export default async function Home({
 
           <OptionsDesk />
         </div>
-
-        {/* ---- Live tape ---- */}
-        <Section
-          title="Live board"
-          id="live"
-        >
-          <LiveBoard />
-        </Section>
-
-        {/* Regime context. It sits after price and flow on purpose: a composite
-            frames what the raw evidence above is doing, it does not replace it. */}
-        <Section
-          title="Market stress"
-          id="stress"
-        >
-          <StressIndex />
-        </Section>
 
         {/* ---- Derivatives ---- */}
         <div id="derivatives" className="scroll-mt-[186px] xl:scroll-mt-[145px]">
@@ -128,6 +139,14 @@ export default async function Home({
         {/* ---- On-chain ---- */}
         <div id="onchain" className="scroll-mt-[186px] xl:scroll-mt-[145px]">
           <ExchangeNetflow />
+
+          {/* Who earns, straight after the flow desk.
+              These are the two questions about substance rather than price: what
+              is moving on chain, and whether anyone is actually paying to use
+              any of it. It sat ten panels lower among the venue plumbing, which
+              is where a reader goes to look something up rather than to be told
+              something. */}
+          <Earners />
 
           <DexPools />
 

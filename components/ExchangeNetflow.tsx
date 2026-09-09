@@ -137,6 +137,42 @@ function Signed({ usd, kind }: { usd: number | null; kind: "stable" | "crypto" }
   );
 }
 
+/**
+ * What a leg's direction means, as a tag rather than as a colour on the figure.
+ *
+ * Both legs can be negative at once while one is constructive and the other is
+ * not, because coins leaving reduces what can be sold and stablecoins leaving
+ * removes what could buy. That is the whole reading, and it cannot be carried
+ * by tinting a minus sign.
+ */
+function FlowRead({ kind, v }: { kind: "stable" | "crypto"; v: number | null }) {
+  if (v == null || !Number.isFinite(v)) {
+    return <div className="mt-1 font-mono text-[11px] text-[var(--text3)]">no reading</div>;
+  }
+  const good = kind === "stable" ? v > 0 : v < 0;
+  const color = v === 0 ? "var(--text3)" : good ? "var(--pos)" : "var(--neg)";
+  const word = v === 0 ? "flat" : good ? "constructive" : "defensive";
+  const detail =
+    kind === "stable"
+      ? v > 0
+        ? "arriving, buying power reaching the venues"
+        : "leaving, buying power stepping away"
+      : v > 0
+        ? "arriving, supply that can be sold"
+        : "leaving, less supply to sell";
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+      <span
+        className="pill shrink-0 border-transparent px-1.5 py-0 text-[9px] uppercase"
+        style={{ color, background: `color-mix(in srgb, ${color} 14%, transparent)` }}
+      >
+        {word}
+      </span>
+      <span className="font-mono text-[10px] text-[var(--text3)]">{detail}</span>
+    </div>
+  );
+}
+
 export function ExchangeNetflow() {
   const { data, loading, failed } = useApi<NetflowPayload>("/api/netflow", 300);
   const [picked, setPicked] = useState<WindowKey>("h24");
@@ -220,7 +256,14 @@ export function ExchangeNetflow() {
                   Stablecoins
                 </span>
               </div>
-              <div className="mt-1 font-mono text-2xl font-bold leading-none" style={{ color: flowColor("stable", stable) }}>
+              {/* The figure is not coloured.
+                  Colour here follows the reading rather than the sign, and the
+                  same direction means opposite things on the two legs, so a red
+                  minus above a green minus looked like a contradiction however
+                  the caption was worded. The number states the direction, the
+                  tag underneath states what it means, and neither can be read
+                  as commenting on the other. */}
+              <div className="mt-1 font-mono text-2xl font-bold leading-none text-[var(--text)]">
                 {stable == null ? "n/a" : `${stable > 0 ? "+" : stable < 0 ? "-" : ""}${usdCompact(Math.abs(stable))}`}
               </div>
               {/* The direction and what it means, together.
@@ -229,13 +272,7 @@ export function ExchangeNetflow() {
                   same direction means opposite things on the two legs. With the
                   convention moved behind the panel mark, that looked like a
                   bug. It has to be said on the row it applies to. */}
-              <div className="mt-1 font-mono text-[11px] text-[var(--text3)]">
-                {stable == null
-                  ? "no reading"
-                  : stable > 0
-                    ? "arriving, buying power reaching the venues"
-                    : "leaving, buying power stepping away"}
-              </div>
+              <FlowRead kind="stable" v={stable} />
             </div>
 
             <div>
@@ -244,16 +281,10 @@ export function ExchangeNetflow() {
                   BTC and ETH
                 </span>
               </div>
-              <div className="mt-1 font-mono text-2xl font-bold leading-none" style={{ color: flowColor("crypto", crypto) }}>
+              <div className="mt-1 font-mono text-2xl font-bold leading-none text-[var(--text)]">
                 {crypto == null ? "n/a" : `${crypto > 0 ? "+" : crypto < 0 ? "-" : ""}${usdCompact(Math.abs(crypto))}`}
               </div>
-              <div className="mt-1 font-mono text-[11px] text-[var(--text3)]">
-                {crypto == null
-                  ? "no reading"
-                  : crypto > 0
-                    ? "arriving, supply that can be sold"
-                    : "leaving, less supply to sell"}
-              </div>
+              <FlowRead kind="crypto" v={crypto} />
             </div>
           </div>
 

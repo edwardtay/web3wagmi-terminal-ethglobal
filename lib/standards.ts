@@ -38,6 +38,11 @@ export const STANDARD_QUERY = `{
     cumulativeSupplySideRevenueUSD
     cumulativeUniqueUsers
   }
+  financialsDailySnapshots(first: 7, orderBy: timestamp, orderDirection: desc) {
+    timestamp
+    dailyTotalRevenueUSD
+    dailyProtocolSideRevenueUSD
+  }
 }`;
 
 /**
@@ -71,6 +76,20 @@ export interface StandardRow {
   tvlUsd: number | null;
   revenueUsd: number | null;
   users: number | null;
+  /** Seven days of fees, summed from the shared daily snapshot entity. */
+  revenue7dUsd: number | null;
+  /** The share of those fees the protocol kept rather than paid out. */
+  protocolSide7dUsd: number | null;
+  /** Unix seconds of the newest snapshot, so a stale subgraph is visible. */
+  asOf: number | null;
+  /**
+   * The share of the week's fees the protocol kept, as a percentage, or null
+   * where the ratio would not mean anything. Decided here rather than at each
+   * reader, so the panel and the assistant can never disagree about it.
+   */
+  takePct: number | null;
+  /** How long this subgraph's indexer has been stopped, or null while current. */
+  staleDays: number | null;
   /** Why this one did not answer, when it did not. */
   error?: string;
 }
@@ -85,9 +104,74 @@ export interface Standards {
 }
 
 interface Reply {
-  data?: { protocols?: { name?: string; type?: string; totalValueLockedUSD?: string; cumulativeSupplySideRevenueUSD?: string; cumulativeUniqueUsers?: number }[] };
+  data?: {
+    protocols?: { name?: string; type?: string; totalValueLockedUSD?: string; cumulativeSupplySideRevenueUSD?: string; cumulativeUniqueUsers?: number }[];
+    financialsDailySnapshots?: { timestamp?: string; dailyTotalRevenueUSD?: string; dailyProtocolSideRevenueUSD?: string }[];
+  };
   errors?: { message?: string }[];
 }
+
+/** A row that answered nothing, so every failure shape stays one shape. */
+const blank = (label: string): StandardRow => ({
+  label, name: null, type: null, tvlUsd: null, revenueUsd: null, users: null,
+  revenue7dUsd: null, protocolSide7dUsd: null, asOf: null, takePct: null, staleDays: null,
+});
+
+/**
+ * A subgraph is stale when its newest snapshot is older than this. Three days
+ * of slack, because a healthy indexer is hours behind and an abandoned one is
+ * years behind; there is nothing in between to get wrong.
+ */
+const STALE_DAYS = 3;
+
+/**
+ * Below this much in weekly fees, the take rate is withheld rather than
+ * reported.
+ *
+ * The ratio is only a statement about a business while there is a business.
+ * Compound v2 earned about ten thousand dollars last week and kept all of it,
+ * and left unguarded that renders as a 100% take rate standing above
+ * MakerDAO's 88%, which invites exactly the wrong conclusion: asked which
+ * protocol keeps the biggest share, the honest answer is the one with the
+ * largest cut of real revenue, not the one with the smallest denominator.
+ * Fifty thousand a week is roughly seven thousand a day, which is low enough
+ * to keep every protocol here that is still operating and high enough to drop
+ * the ones that have wound down.
+ */
+const MIN_WEEKLY_FEES_FOR_TAKE = 50_000;
+
+/** The protocol's own cut, where the figures support saying one. */
+function takePct(row: { revenue7dUsd: number | null; protocolSide7dUsd: number | null; asOf: number | null }): number | null {
+  if (staleDays(row.asOf) !== null) return null;
+  const { revenue7dUsd: total, protocolSide7dUsd: kept } = row;
+  if (total == null || kept == null || total < MIN_WEEKLY_FEES_FOR_TAKE) return null;
+  return (kept / total) * 100;
+}
+
+/**
+ * How far behind a subgraph's last snapshot is, once that is far enough to
+ * matter, and null while it is current.
+ *
+ * A standardized schema makes every row comparable. It does not promise every
+ * indexer is still running, and an abandoned one still answers: Euler's
+ * stopped in 2022 and its newest seven snapshots still sum into a
+ * plausible-looking week.
+ */
+function staleDays(asOf: number | null): number | null {
+  if (!asOf) return null;
+  const days = Math.floor(Date.now() / 1000 / 86_400 - asOf / 86_400);
+  return days > STALE_DAYS ? days : null;
+}
+
+const sum = (rows: { [k: string]: string | undefined }[], field: string): number | null => {
+  if (!rows.length) return null;
+  let t = 0;
+  for (const r of rows) {
+    const n = Number(r[field]);
+    if (Number.isFinite(n)) t += n;
+  }
+  return t;
+};
 
 const num = (v: unknown): number | null => {
   const n = Number(v);
@@ -111,12 +195,21 @@ export async function readStandards(revalidate: number): Promise<Standards | nul
   const replies = await Promise.all(SUBGRAPHS.map((s) => one(s.id, revalidate)));
   const rows: StandardRow[] = SUBGRAPHS.map((s, i) => {
     const r = replies[i];
-    if (!r) return { label: s.label, name: null, type: null, tvlUsd: null, revenueUsd: null, users: null, error: "No answer from the gateway." };
-    if (r.errors?.length) return { label: s.label, name: null, type: null, tvlUsd: null, revenueUsd: null, users: null, error: String(r.errors[0]?.message ?? "Query rejected.").slice(0, 140) };
+    if (!r) return { ...blank(s.label), error: "No answer from the gateway." };
+    if (r.errors?.length) return { ...blank(s.label), error: String(r.errors[0]?.message ?? "Query rejected.").slice(0, 140) };
     const p = r.data?.protocols?.[0];
-    if (!p) return { label: s.label, name: null, type: null, tvlUsd: null, revenueUsd: null, users: null, error: "The schema answered but held no protocol row." };
+    if (!p) return { ...blank(s.label), error: "The schema answered but held no protocol row." };
+    const snaps = r.data?.financialsDailySnapshots ?? [];
+    const week = {
+      revenue7dUsd: sum(snaps, "dailyTotalRevenueUSD"),
+      protocolSide7dUsd: sum(snaps, "dailyProtocolSideRevenueUSD"),
+      asOf: num(snaps[0]?.timestamp),
+    };
     return {
       label: s.label,
+      ...week,
+      takePct: takePct(week),
+      staleDays: staleDays(week.asOf),
       name: p.name ?? null,
       type: p.type ?? null,
       tvlUsd: num(p.totalValueLockedUSD),

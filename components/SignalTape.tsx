@@ -45,6 +45,28 @@ const KIND_LABEL: Record<SignalKind, string> = {
   unlock: "supply",
 };
 
+/**
+ * A glyph per signal kind.
+ *
+ * The pills all look alike at a glance, so scanning a queue of them means
+ * reading seven words to find the one row that is about supply. A shape is
+ * recognised before it is read, which is the whole job of a category badge on
+ * a list somebody skims.
+ *
+ * Drawn from the geometric set rather than emoji: emoji render at a different
+ * weight on every platform and several of the obvious ones are coloured, which
+ * would fight the colour already carrying the kind.
+ */
+const KIND_GLYPH: Record<SignalKind, string> = {
+  funding: "\u25C6",
+  move: "\u25B2",
+  oi: "\u25CF",
+  "vol-carry": "\u25C7",
+  peg: "\u25AC",
+  flow: "\u25B6",
+  unlock: "\u25A0",
+};
+
 const KIND_COLOR: Record<SignalKind, string> = {
   funding: "var(--accent)",
   move: "var(--cyan)",
@@ -140,8 +162,23 @@ export function SignalTape() {
               const open = expanded === s.id;
               return (
                 <li key={s.id}>
+                  {/* The row is the control.
+                      It carried a "why" button and a "panel" link, which is two
+                      targets on a row whose whole content is one thought, and
+                      on a phone they were two small ones. Pressing the row
+                      opens its reasoning and pressing it again closes it. */}
                   <div
-                    className="rounded-lg border border-[var(--border2)] bg-[var(--bg2)] p-2.5"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={open}
+                    onClick={() => setExpanded(open ? null : s.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setExpanded(open ? null : s.id);
+                      }
+                    }}
+                    className="cursor-pointer rounded-lg border border-[var(--border2)] bg-[var(--bg2)] p-2.5 hover:border-[var(--accent)]"
                     style={{ borderLeft: `3px solid ${severityColor(s.severity)}` }}
                   >
                     <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
@@ -154,6 +191,9 @@ export function SignalTape() {
                             background: `color-mix(in srgb, ${KIND_COLOR[s.kind]} 12%, transparent)`,
                           }}
                         >
+                          <span aria-hidden className="text-[8px] leading-none">
+                            {KIND_GLYPH[s.kind]}
+                          </span>
                           {KIND_LABEL[s.kind]}
                         </span>
                         <span className="min-w-0 break-words text-[13px] font-semibold text-[var(--text)]">
@@ -188,19 +228,9 @@ export function SignalTape() {
                         >
                           {severityBand(s.severity).toLowerCase()}
                         </span>
-                        <button
-                          onClick={() => setExpanded(open ? null : s.id)}
-                          aria-expanded={open}
-                          className="rounded border border-[var(--border)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text3)] hover:border-[var(--accent)] hover:text-[var(--text)]"
-                        >
-                          {open ? "less" : "why"}
-                        </button>
-                        <a
-                          href={s.href}
-                          className="rounded border border-[var(--border)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text3)] hover:border-[var(--accent)] hover:text-[var(--text)]"
-                        >
-                          panel
-                        </a>
+                        <span aria-hidden className="font-mono text-[10px] text-[var(--text3)]">
+                          {open ? "\u2212" : "+"}
+                        </span>
                       </div>
                     </div>
 

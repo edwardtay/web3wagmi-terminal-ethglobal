@@ -1,7 +1,7 @@
 "use client";
 
 import { useApi } from "@/lib/useApi";
-import { Section, Panel, Unavailable, Loading, AsOf, TableWrap } from "./ui";
+import { Section, Panel, Unavailable, Loading, AsOf, TableWrap, Th } from "./ui";
 import { usdCompact, num } from "@/lib/format";
 
 // What a shared schema buys, shown rather than claimed.
@@ -26,6 +26,11 @@ interface Row {
   tvlUsd: number | null;
   revenueUsd: number | null;
   users: number | null;
+  revenue7dUsd: number | null;
+  protocolSide7dUsd: number | null;
+  asOf: number | null;
+  takePct: number | null;
+  staleDays: number | null;
   error?: string;
 }
 
@@ -40,6 +45,16 @@ interface Payload {
   queries?: number;
   note: string | null;
 }
+
+// Whether a row's week is reportable, and what its take rate is, are both
+// decided in lib/standards.ts so the panel and the assistant cannot disagree
+// about a number they read from the same route. This file only formats.
+
+/** A stale row's last seven snapshots are seven days of the distant past. */
+const fees7d = (r: Row) => (r.staleDays !== null ? "\u2014" : usdCompact(r.revenue7dUsd, 2));
+
+const take = (r: Row) =>
+  r.staleDays !== null ? "\u2014" : r.takePct === null ? "n/a" : `${r.takePct.toFixed(0)}%`;
 
 export function Standards() {
   const { data, loading, failed } = useApi<Payload>("/api/standards", 1800);
@@ -62,17 +77,26 @@ export function Standards() {
         </div>
         <p className="mb-3 text-[12px] leading-relaxed text-[var(--text2)]">
           Sent unchanged to {data.attempted} subgraphs. {data.answered} answered. Adding another
-          protocol is one line, an id, because the schema is already agreed.
+          protocol is one line, an id, because the schema is already agreed. Each row is one
+          Ethereum mainnet deployment, and the figures are the schema's definitions rather than any
+          aggregator's, which is what makes the rows comparable with each other. The take column is
+          what a shared schema buys that a feed does not: because the schema defines supply side and
+          protocol side as separate fields, the same query that returns fees also returns who kept
+          them. Where a subgraph reports its whole fee as supply side, as Lido's mapping does, the
+          take reads zero: that is the mapping's answer and it is left standing rather than
+          patched.
         </p>
 
         <TableWrap maxHeight={360}>
           <thead>
             <tr>
-              <th>Protocol</th>
-              <th>Category</th>
-              <th className="num">TVL</th>
-              <th className="num">Supply revenue</th>
-              <th className="num">Users</th>
+              <Th label="Protocol" />
+              <Th label="Category" hint="Messari's category, not the protocol's own. MakerDAO reads LENDING and Lido reads GENERIC because a shared vocabulary only counts as shared if it overrides the local one." />
+              <Th label="TVL" num hint="The schema's definition. For a lending market that is total deposits, before subtracting what has been borrowed against them." />
+              <Th label="Fees 7d" num hint="Seven days of total revenue, summed from the same daily snapshot entity every one of these subgraphs exposes. This is the fee the protocol generated, before splitting it." />
+              <Th label="Take" num hint="The share of those fees the protocol itself kept rather than paid to suppliers. A lending market that keeps 12% is running a thinner cut than one that keeps 88%. No aggregator gives this split: it exists because the schema defines supply side and protocol side separately. Withheld under fifty thousand dollars of weekly fees, because a wound-down protocol earning ten thousand and keeping all of it would otherwise top this column." />
+              <Th label="Supply revenue" num hint="Cumulative, since the protocol's deployment. Paid to depositors and liquidity providers rather than kept." />
+              <Th label="Users" num hint="Cumulative unique addresses, by the schema's count." />
             </tr>
           </thead>
           <tbody>
@@ -83,9 +107,14 @@ export function Standards() {
                   {r.name && r.name !== r.label && (
                     <div className="break-words text-[10px] text-[var(--text3)]">{r.name}</div>
                   )}
+                  {r.staleDays !== null && (
+                    <div className="break-words text-[10px] text-[var(--neg)]">
+                      indexer stopped {r.staleDays} days ago
+                    </div>
+                  )}
                 </td>
                 {r.error ? (
-                  <td colSpan={4} className="break-words text-[11px] text-[var(--text3)]">
+                  <td colSpan={6} className="break-words text-[11px] text-[var(--text3)]">
                     {r.error}
                   </td>
                 ) : (
@@ -94,6 +123,8 @@ export function Standards() {
                       {r.type ?? "n/a"}
                     </td>
                     <td className="num font-semibold text-[var(--text)]">{usdCompact(r.tvlUsd, 2)}</td>
+                    <td className="num">{fees7d(r)}</td>
+                    <td className="num">{take(r)}</td>
                     <td className="num">{usdCompact(r.revenueUsd, 2)}</td>
                     <td className="num">{num(r.users, 0)}</td>
                   </>
@@ -120,7 +151,7 @@ export function Standards() {
     <Section
       title="One query, many protocols"
       id="standards"
-      hint="A standardized subgraph schema, queried once and answered by every protocol that shares it. Totals are protocol-wide and update on a daily snapshot, so they are not a live tape."
+      hint="A standardized subgraph schema, queried once and answered by every protocol that shares it. Each row is one deployment on Ethereum mainnet, not a protocol across every chain and version, and TVL is the schema's own definition: for a lending market that is total deposits, before subtracting what has been borrowed against them. Aave v3 reads $24.7b here and $18.3b on DefiLlama for exactly those two reasons, and neither is wrong. Comparing the rows to each other is the point; comparing one of them to another aggregator is comparing two different definitions."
     >
       <Panel>{body()}</Panel>
     </Section>

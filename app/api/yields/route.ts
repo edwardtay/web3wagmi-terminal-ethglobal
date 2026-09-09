@@ -97,10 +97,16 @@ function shape(p: LlamaPool): YieldPool {
 
 export async function GET() {
   const asOf = new Date().toISOString();
-  // 20s: the payload is large enough that the default 9s times out on a cold edge.
+  // 90s, because the upstream is 11.8MB and has been measured taking 77s to
+  // serve it. The old 20s ceiling was set when the document was smaller and it
+  // silently emptied this panel once the document outgrew it: the route still
+  // answered, with ok:false and no pools, which reads as "no yields worth
+  // showing" rather than "the fetch never finished". The route caches its
+  // finished payload for the full revalidate window, so one slow fetch an hour
+  // is the whole cost.
   const raw = await getJson<{ status: string; data: LlamaPool[] }>(SRC, {
     revalidate,
-    timeout: 20_000,
+    timeout: 90_000,
   });
 
   const all = Array.isArray(raw?.data) ? raw.data : [];
