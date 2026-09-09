@@ -8,6 +8,14 @@ expects and with the explanation a normal person needs.
 Built for ETHOnline 2026 on top of an existing terminal. What existed before the event and
 what was built during it is set out in [CONTINUITY.md](CONTINUITY.md).
 
+> **About this repository's commit history.** This is a public mirror, published from a
+> private working repository so that deployment config and internal working notes stay out
+> of it. Its history is therefore an import: fifteen of its commits share one timestamp,
+> because that is when the code was published rather than when it was written. The working
+> repository has 131 commits across the event, and it can be shown to judges on request.
+> Nothing in this repository's `git log` should be read as evidence of when the work
+> happened, and CONTINUITY.md says the same thing at more length.
+
 ## The Graph, and what it is load-bearing for
 
 The terminal already read prices, funding, open interest and options from exchange APIs.

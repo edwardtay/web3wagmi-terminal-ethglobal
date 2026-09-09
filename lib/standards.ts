@@ -140,6 +140,28 @@ const STALE_DAYS = 3;
  */
 const MIN_WEEKLY_FEES_FOR_TAKE = 50_000;
 
+/**
+ * Above this, a cumulative figure is not a number about this world.
+ *
+ * Curve's subgraph reports cumulativeSupplySideRevenueUSD as 1.88e20, which is
+ * 188 quintillion dollars: thirty-nine billion times its own TVL, and several
+ * times the value of everything humans own. Aave v3's cumulativeTotalRevenueUSD
+ * has the same shape at 2.8e14. Both are mapping bugs upstream rather than
+ * readings, and neither is ours to correct, but printing one on a panel whose
+ * whole argument is that these figures are comparable would undo the argument.
+ *
+ * A trillion dollars is the bound because the entire crypto market is a few
+ * trillion, so no single protocol has earned a trillion in fees since
+ * inception. Anything above it is a broken mapping, and the panel says the
+ * figure is unavailable rather than repeating it.
+ */
+const MAX_PLAUSIBLE_CUMULATIVE_USD = 1e12;
+
+/** A figure the schema reports that the world cannot support. */
+function plausible(v: number | null): number | null {
+  return v != null && Math.abs(v) < MAX_PLAUSIBLE_CUMULATIVE_USD ? v : null;
+}
+
 /** The protocol's own cut, where the figures support saying one. */
 function takePct(row: { revenue7dUsd: number | null; protocolSide7dUsd: number | null; asOf: number | null }): number | null {
   if (staleDays(row.asOf) !== null) return null;
@@ -212,8 +234,8 @@ export async function readStandards(revalidate: number): Promise<Standards | nul
       staleDays: staleDays(week.asOf),
       name: p.name ?? null,
       type: p.type ?? null,
-      tvlUsd: num(p.totalValueLockedUSD),
-      revenueUsd: num(p.cumulativeSupplySideRevenueUSD),
+      tvlUsd: plausible(num(p.totalValueLockedUSD)),
+      revenueUsd: plausible(num(p.cumulativeSupplySideRevenueUSD)),
       users: num(p.cumulativeUniqueUsers),
     };
   });
