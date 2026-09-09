@@ -50,6 +50,7 @@ export const SECTION_GROUPS: { label: string; items: { id: string; label: string
     label: "On-chain",
     items: [
       { id: "netflow", label: "Exchange flow" },
+      { id: "agents", label: "Agent economy" },
       { id: "dex", label: "DEX pools" },
       { id: "chains", label: "Chains" },
       { id: "protocols", label: "Protocols" },

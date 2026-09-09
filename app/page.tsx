@@ -23,6 +23,7 @@ import { DexPools } from "@/components/DexPools";
 import { ChainBoard } from "@/components/ChainBoard";
 import { ProtocolMovers } from "@/components/ProtocolMovers";
 import { Earners } from "@/components/Earners";
+import { AgentEconomy } from "@/components/AgentEconomy";
 import { Stablecoins } from "@/components/Stablecoins";
 import { YieldScanner } from "@/components/YieldScanner";
 import { GasTracker } from "@/components/GasTracker";
@@ -149,6 +150,13 @@ export default async function Home({
         {/* ---- On-chain ---- */}
         <div id="onchain" className="scroll-mt-[186px] xl:scroll-mt-[145px]">
           <ExchangeNetflow />
+
+          {/* The agent economy, in the on-chain group because that is what it is:
+              a set of registries on five chains, read the same way the rest of
+              this group is read. It sits after exchange flow rather than among
+              the market panels because it is not a market reading. Nothing here
+              moves a price today. */}
+          <AgentEconomy />
 
           <DexPools />
 

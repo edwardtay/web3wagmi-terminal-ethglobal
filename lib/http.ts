@@ -185,6 +185,42 @@ export async function postJson<T>(
   }
 }
 
+/**
+ * The same POST, with named response headers handed back alongside the body.
+ *
+ * postJson throws headers away, which is right almost everywhere and wrong for
+ * The Graph's gateway: it returns `graph-attestation`, an ECDSA signature by
+ * the indexer over the request and response CIDs. That is the difference
+ * between a page claiming its numbers came from the network and a page able to
+ * show that they did, so this route keeps it.
+ */
+export async function postJsonWithHeaders<T>(
+  url: string,
+  body: unknown,
+  want: string[],
+  opts: GetJsonOptions = {}
+): Promise<{ body: T; headers: Record<string, string> } | null> {
+  const { revalidate = 60, timeout = 9000, headers } = opts;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "User-Agent": UA, "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeout),
+      ...(revalidate > 0 ? { next: { revalidate } } : { cache: "no-store" as const }),
+    });
+    if (!res.ok) return null;
+    const picked: Record<string, string> = {};
+    for (const h of want) {
+      const v = res.headers.get(h);
+      if (v) picked[h] = v;
+    }
+    return { body: (await res.json()) as T, headers: picked };
+  } catch {
+    return null;
+  }
+}
+
 /** Settle every promise, dropping the failures. Order is not preserved. */
 export async function allOk<T>(jobs: Promise<T | null>[]): Promise<T[]> {
   const settled = await Promise.allSettled(jobs);

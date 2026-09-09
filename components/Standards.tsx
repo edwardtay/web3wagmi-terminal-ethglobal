@@ -31,6 +31,14 @@ interface Row {
   asOf: number | null;
   takePct: number | null;
   staleDays: number | null;
+  attestation: {
+    requestCID: string;
+    responseCID: string;
+    subgraphDeploymentID: string;
+    r: string;
+    s: string;
+    v: number;
+  } | null;
   error?: string;
 }
 
@@ -133,6 +141,54 @@ export function Standards() {
             ))}
           </tbody>
         </TableWrap>
+
+        {/*
+            The one thing on this panel nobody here could have written.
+
+            Every other number could in principle be typed into a file and
+            served. The gateway signs each answer: an ECDSA signature by the
+            indexer that served it, over the hash of the query sent and the hash
+            of the answer returned. A reader who doubts these rows came off The
+            Graph can check that the signature covers the response they were
+            shown, which is a stronger claim than any assurance in this
+            paragraph.
+        */}
+        {(() => {
+          const signed = data.rows.filter((r) => r.attestation);
+          if (!signed.length) return null;
+          const a = signed[0].attestation!;
+          return (
+            <details className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--bg2)] p-2.5">
+              <summary className="cursor-pointer text-[11px] text-[var(--text2)]">
+                {signed.length} of {data.rows.length} answers arrived signed by the indexer that
+                served them. Open for the signature over this table.
+              </summary>
+              <div className="mt-2 space-y-1 font-mono text-[10px] leading-relaxed text-[var(--text3)]">
+                <div className="break-all">
+                  <span className="text-[var(--text2)]">deployment</span> {a.subgraphDeploymentID}
+                </div>
+                <div className="break-all">
+                  <span className="text-[var(--text2)]">request</span> {a.requestCID}
+                </div>
+                <div className="break-all">
+                  <span className="text-[var(--text2)]">response</span> {a.responseCID}
+                </div>
+                <div className="break-all">
+                  <span className="text-[var(--text2)]">signature</span> r {a.r}
+                </div>
+                <div className="break-all">
+                  <span className="text-[var(--text2)]">&nbsp;</span> s {a.s}, v {a.v}
+                </div>
+              </div>
+              <p className="mt-2 text-[11px] leading-relaxed text-[var(--text2)]">
+                {signed[0].label}&apos;s indexer signed the hash of the query above and the hash of
+                the answer in this table. It is the one thing on this page that could not have been
+                written here, which is why it is worth showing rather than asserting the data is
+                live.
+              </p>
+            </details>
+          );
+        })()}
 
         {data.bespoke?.error && (
           <p className="mt-3 break-words rounded-lg border border-[var(--border)] bg-[var(--bg2)] p-2.5 text-[11px] leading-relaxed text-[var(--text2)]">

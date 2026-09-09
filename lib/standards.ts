@@ -1,5 +1,5 @@
 import "server-only";
-import { postJson } from "./http";
+import { postJsonWithHeaders } from "./http";
 
 // One query, many protocols, because they share a schema.
 //
@@ -67,6 +67,27 @@ const SUBGRAPHS: { label: string; id: string }[] = [
 /** A bespoke subgraph, sent the same query, so the contrast is measured. */
 const BESPOKE = { label: "Uniswap v3", id: "5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV" };
 
+/**
+ * What the gateway's `graph-attestation` header carries.
+ *
+ * An ECDSA signature by the indexer that served the query, over the hash of the
+ * request and the hash of the response. It is the one thing on this page that
+ * cannot be authored by us: a reader who doubts the numbers came from The Graph
+ * can check that the signature covers the response they were shown.
+ */
+export interface Attestation {
+  /** Hash of the query that was sent. */
+  requestCID: string;
+  /** Hash of the answer that came back. */
+  responseCID: string;
+  /** Which deployment answered. */
+  subgraphDeploymentID: string;
+  /** The signature itself. */
+  r: string;
+  s: string;
+  v: number;
+}
+
 export interface StandardRow {
   label: string;
   /** The protocol's own name, from the shared schema rather than from us. */
@@ -90,6 +111,11 @@ export interface StandardRow {
   takePct: number | null;
   /** How long this subgraph's indexer has been stopped, or null while current. */
   staleDays: number | null;
+  /**
+   * The indexer's signature over this exact answer, when the gateway supplies
+   * one. Proof the row came off the network rather than out of a file here.
+   */
+  attestation: Attestation | null;
   /** Why this one did not answer, when it did not. */
   error?: string;
 }
@@ -115,6 +141,7 @@ interface Reply {
 const blank = (label: string): StandardRow => ({
   label, name: null, type: null, tvlUsd: null, revenueUsd: null, users: null,
   revenue7dUsd: null, protocolSide7dUsd: null, asOf: null, takePct: null, staleDays: null,
+  attestation: null,
 });
 
 /**
@@ -162,6 +189,28 @@ function plausible(v: number | null): number | null {
   return v != null && Math.abs(v) < MAX_PLAUSIBLE_CUMULATIVE_USD ? v : null;
 }
 
+/** The signature the gateway attached, where it attached one. */
+function readAttestation(headers: Record<string, string> | undefined): Attestation | null {
+  const raw = headers?.["graph-attestation"];
+  if (!raw) return null;
+  try {
+    const a = JSON.parse(raw) as Partial<Attestation>;
+    return a.requestCID && a.responseCID && a.subgraphDeploymentID && a.r && a.s
+      ? {
+          requestCID: a.requestCID,
+          responseCID: a.responseCID,
+          subgraphDeploymentID: a.subgraphDeploymentID,
+          r: a.r,
+          s: a.s,
+          v: Number(a.v ?? 0),
+        }
+      : null;
+  } catch {
+    // A header we cannot parse is not worth failing a desk over.
+    return null;
+  }
+}
+
 /** The protocol's own cut, where the figures support saying one. */
 function takePct(row: { revenue7dUsd: number | null; protocolSide7dUsd: number | null; asOf: number | null }): number | null {
   if (staleDays(row.asOf) !== null) return null;
@@ -200,10 +249,11 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-async function one(id: string, revalidate: number): Promise<Reply | null> {
-  return postJson<Reply>(
+async function one(id: string, revalidate: number): Promise<{ body: Reply; headers: Record<string, string> } | null> {
+  return postJsonWithHeaders<Reply>(
     `${GATEWAY}/${process.env.GRAPH_SUBGRAPH_KEY}/subgraphs/id/${id}`,
     { query: STANDARD_QUERY },
+    ["graph-attestation"],
     // Next keys its fetch cache by URL and a POST body is invisible to it. Each
     // subgraph has its own URL here so that is safe, unlike the single-endpoint
     // case in lib/subgraph.ts, but the route caches its finished payload anyway.
@@ -216,11 +266,16 @@ export async function readStandards(revalidate: number): Promise<Standards | nul
 
   const replies = await Promise.all(SUBGRAPHS.map((s) => one(s.id, revalidate)));
   const rows: StandardRow[] = SUBGRAPHS.map((s, i) => {
-    const r = replies[i];
-    if (!r) return { ...blank(s.label), error: "No answer from the gateway." };
-    if (r.errors?.length) return { ...blank(s.label), error: String(r.errors[0]?.message ?? "Query rejected.").slice(0, 140) };
+    const reply = replies[i];
+    if (!reply) return { ...blank(s.label), error: "No answer from the gateway." };
+    const r = reply.body;
+    // Kept even on a failed row: the signature says the gateway answered, which
+    // is a different fact from whether the schema had what we asked for.
+    const attestation = readAttestation(reply.headers);
+    if (r.errors?.length)
+      return { ...blank(s.label), attestation, error: String(r.errors[0]?.message ?? "Query rejected.").slice(0, 140) };
     const p = r.data?.protocols?.[0];
-    if (!p) return { ...blank(s.label), error: "The schema answered but held no protocol row." };
+    if (!p) return { ...blank(s.label), attestation, error: "The schema answered but held no protocol row." };
     const snaps = r.data?.financialsDailySnapshots ?? [];
     const week = {
       revenue7dUsd: sum(snaps, "dailyTotalRevenueUSD"),
@@ -232,6 +287,7 @@ export async function readStandards(revalidate: number): Promise<Standards | nul
       ...week,
       takePct: takePct(week),
       staleDays: staleDays(week.asOf),
+      attestation,
       name: p.name ?? null,
       type: p.type ?? null,
       tvlUsd: plausible(num(p.totalValueLockedUSD)),
@@ -241,11 +297,12 @@ export async function readStandards(revalidate: number): Promise<Standards | nul
   });
 
   const bespokeReply = await one(BESPOKE.id, revalidate);
+  const bespokeBody = bespokeReply?.body;
   const bespoke = {
     label: BESPOKE.label,
-    error: bespokeReply?.errors?.length
-      ? String(bespokeReply.errors[0]?.message ?? "").slice(0, 140)
-      : bespokeReply?.data?.protocols
+    error: bespokeBody?.errors?.length
+      ? String(bespokeBody.errors[0]?.message ?? "").slice(0, 140)
+      : bespokeBody?.data?.protocols
         ? null
         : "No answer.",
   };
