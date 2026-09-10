@@ -48,7 +48,7 @@ interface Payload {
   totalFeedback: number;
   answered: number;
   attempted: number;
-  readings: { says: string; evidence: string }[];
+  readings: { finding: string; figure: string; basis: string }[];
   rated: {
     chain: string;
     agentId: string;
@@ -75,33 +75,39 @@ export function AgentEconomy() {
     }
     return (
       <>
-        {/* The reading, before the grid.
-            A table of counts about a standard most readers have never heard of
-            is homework rather than intelligence. Every other desk here states
-            what its numbers mean and this one did not, so a reader who did not
-            already follow ERC-8004 got four hundred thousand of something and
-            no way to tell whether that was a lot, a little, or mostly noise.
-            Written in code, each line carrying the row it came from. */}
+        {/* The findings, as a table.
+            Written as prose first and seven paragraphs of it was a wall: a
+            reader had to get through a clause explaining what a registry is
+            before reaching the number. A finding is a claim, a figure and the
+            arithmetic behind it, and those are columns. */}
         {data.readings.length > 0 && (
-          <ul className="mb-4 space-y-2">
-            {data.readings.map((r) => (
-              <li key={r.says} className="border-l-2 border-[var(--accent2)] pl-2.5">
-                <div className="break-words text-[13px] font-semibold leading-snug text-[var(--text)]">
-                  {r.says}
-                </div>
-                <div className="mt-0.5 break-words font-mono text-[10px] leading-relaxed text-[var(--text3)]">
-                  {r.evidence}
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div className="mb-4">
+            <TableWrap maxHeight={340}>
+              <thead>
+                <tr>
+                  <Th label="Finding" />
+                  <Th label="Figure" />
+                  <Th label="Basis" hint="The counts the figure was computed from, so it can be checked against the tables below rather than taken on trust." />
+                </tr>
+              </thead>
+              <tbody>
+                {data.readings.map((r) => (
+                  <tr key={r.finding}>
+                    <td className="break-words font-semibold text-[var(--text)]">{r.finding}</td>
+                    <td className="break-words font-mono text-[12px] font-semibold text-[var(--accent)]">
+                      {r.figure}
+                    </td>
+                    <td className="break-words text-[11px] text-[var(--text3)]">{r.basis}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </TableWrap>
+          </div>
         )}
 
         <p className="mb-3 text-[12px] leading-relaxed text-[var(--text2)]">
-          {num(data.totalAgents, 0)} agents hold an ERC-8004 identity across {data.answered} chains
-          and clients have written {num(data.totalFeedback, 0)} ratings about them. An identity is
-          close to free and a rating is not, so ratings per agent is the column that matters. Then
-          read the table under it, because that average is held up by very few agents.
+          {num(data.totalAgents, 0)} identities and {num(data.totalFeedback, 0)} ratings across{" "}
+          {data.answered} chains, by chain.
         </p>
 
         <TableWrap maxHeight={320}>

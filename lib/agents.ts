@@ -129,12 +129,22 @@ export interface AgentChainRow {
   error?: string;
 }
 
-/** One plain statement about what the tables mean, with the figure behind it. */
+/**
+ * One finding, as three columns rather than a sentence.
+ *
+ * Written as prose first, and seven paragraphs of it was a wall: the reader had
+ * to get through a clause about what a registry is before reaching the number
+ * that mattered. A finding is a claim, a figure and the arithmetic behind it,
+ * and those are columns. The claim carries no number, the figure carries no
+ * words, and the basis is the raw counts so the figure can be checked.
+ */
 export interface AgentReading {
-  /** The sentence, written here rather than by a model. */
-  says: string;
-  /** The measurement it rests on, so the claim can be checked against a row. */
-  evidence: string;
+  /** The claim, in a handful of words and never a number. */
+  finding: string;
+  /** The number it turns on. */
+  figure: string;
+  /** The counts it was computed from. */
+  basis: string;
 }
 
 /**
@@ -337,83 +347,78 @@ function readings(rows: AgentChainRow[], top: RatedAgent[], second: CrossCheck |
   if (!live.length) return out;
 
   const totalAgents = live.reduce((t, r) => t + (r.agents ?? 0), 0);
+  const totalRatings = live.reduce((t, r) => t + (r.feedback ?? 0), 0);
 
-  // 1. Registering is not using, said about the chain doing most of the
-  //    registering. An average across chains would have been an average of
-  //    averages, which is a different number and not a checkable one: this
-  //    names a chain and a rate the reader can find in the row above.
   const biggest = [...live].sort((a, b) => (b.agents ?? 0) - (a.agents ?? 0))[0];
   if (biggest && totalAgents > 0 && (biggest.feedbackPerAgent ?? 0) < 0.5) {
     out.push({
-      says: `Registering is not using. ${biggest.chain} holds ${pct((biggest.agents ?? 0) / totalAgents)} of every agent in existence and each has been rated ${(biggest.feedbackPerAgent ?? 0).toFixed(2)} times on average, which is a registry with almost nothing behind it.`,
-      evidence: `${round(biggest.agents ?? 0)} of ${round(totalAgents)} identities and ${round(biggest.feedback ?? 0)} ratings on ${biggest.chain}.`,
+      finding: `Registering is not using`,
+      figure: `${(biggest.feedbackPerAgent ?? 0).toFixed(2)} ratings per agent on ${biggest.chain}`,
+      basis: `${round(biggest.agents ?? 0)} agents, ${round(biggest.feedback ?? 0)} ratings, ${pct((biggest.agents ?? 0) / totalAgents)} of all identities`,
     });
   }
 
-  // 2. The concentration, which is the thing the averages hide.
   const first = top[0];
   if (first && (first.shareOfChain ?? 0) >= 0.25) {
     out.push({
-      says: `One agent is most of the activity. It holds ${pct(first.shareOfChain ?? 0)} of every rating written on ${first.chain}, and it has ${first.name ? `filed no capabilities` : `no registration file at all`}.`,
-      evidence: `${round(first.ratings)} of ${first.chain}'s ratings against one agent id.`,
+      finding: `One agent is most of the activity`,
+      figure: `${pct(first.shareOfChain ?? 0)} of ${first.chain}`,
+      basis: `${round(first.ratings)} ratings against one id, ${first.name ? `named ${first.name}` : `no registration file`}`,
     });
   }
 
-  // 3. Where the agents that actually do something are.
   const withSample = live.filter((r) => r.sample && r.sample.n >= 100);
   const byMcp = [...withSample].sort((a, b) => mcpShare(b) - mcpShare(a));
   const best = byMcp[0];
   const worst = byMcp[byMcp.length - 1];
   if (best && worst && best !== worst && mcpShare(best) > mcpShare(worst) * 2) {
     out.push({
-      says: `The working ones are on ${best.chain}. ${pct(mcpShare(best))} of its newest registrations publish an endpoint another program can actually call, against ${pct(mcpShare(worst))} on ${worst.chain}.`,
-      evidence: `${best.sample?.mcp} of ${best.sample?.n} on ${best.chain}, ${worst.sample?.mcp} of ${worst.sample?.n} on ${worst.chain}.`,
+      finding: `Callable agents cluster on ${best.chain}`,
+      figure: `${pct(mcpShare(best))} vs ${pct(mcpShare(worst))} on ${worst.chain}`,
+      basis: `${best.sample?.mcp} of ${best.sample?.n} publish an endpoint, against ${worst.sample?.mcp} of ${worst.sample?.n}`,
     });
   }
 
-  // 4. Whether any of them can be paid, which is what makes an economy.
   const payable = withSample.reduce((t, r) => t + (r.sample?.x402 ?? 0), 0);
   const sampled = withSample.reduce((t, r) => t + (r.sample?.n ?? 0), 0);
   if (sampled > 0) {
     out.push({
-      says: `Paying one is still rare. ${pct(payable / sampled)} of the newest registrations accept payment for a call, so most of these identities cannot charge for anything.`,
-      evidence: `${payable} of ${sampled} newest registrations declare x402 support.`,
+      finding: `Almost none can be paid`,
+      figure: `${pct(payable / sampled)} accept x402`,
+      basis: `${payable} of ${round(sampled)} newest registrations`,
     });
   }
 
-  // 5. Concentration as a ratio rather than a superlative. Two agents is not a
-  //    market, and the top-six share is the standard way to say how far from a
-  //    market something is.
-  const totalRatings = live.reduce((t, r) => t + (r.feedback ?? 0), 0);
   const topSix = top.slice(0, 6).reduce((t, a) => t + a.ratings, 0);
   if (totalRatings > 0 && topSix / totalRatings >= 0.5) {
-    // Framed as the tail rather than the head. The head is the reading above,
-    // and two sentences reporting the same percentage read as a bug even when
-    // both are true of different things.
     out.push({
-      says: `The other ${round(totalAgents - 6)} agents share what is left. Six ids account for ${pct(topSix / totalRatings)} of every rating across four chains, which leaves ${pct(1 - topSix / totalRatings)} for everybody else.`,
-      evidence: `${round(topSix)} of ${round(totalRatings)} ratings against six agent ids.`,
+      finding: `Six ids hold the ratings`,
+      figure: `${pct(topSix / totalRatings)}, leaving ${pct(1 - topSix / totalRatings)}`,
+      basis: `${round(topSix)} of ${round(totalRatings)} ratings, shared by ${round(totalAgents - 6)} other agents`,
     });
   }
 
-  // 6. What a second index of the same contracts counts. The disagreement is
-  //    the finding, and it resolves rather than lingering.
   if (second?.mainnet != null) {
     const gap = Math.abs(second.mainnet - totalAgents) / second.mainnet;
-    const testnetLine =
-      second.testnet != null
-        ? ` Counting testnets too it reaches ${round(second.mainnet + second.testnet)}, so ${round(second.testnet)} of the agents anyone might quote are on chains where nothing is at stake.`
-        : "";
     out.push({
-      says: `A second index of the same contracts agrees. 8004scan counts ${round(second.mainnet)} agents on real chains against the ${round(totalAgents)} read here, a ${pct(gap)} gap explained by one indexer being unavailable.${testnetLine}`,
-      evidence: `8004scan mainnet ${round(second.mainnet)}${second.testnet != null ? `, testnet ${round(second.testnet)}` : ""}; Agent0 subgraphs ${round(totalAgents)} across ${live.length} chains.`,
+      finding: `A second index reconciles`,
+      figure: `${pct(gap)} apart`,
+      basis: `8004scan ${round(second.mainnet)} on mainnet, Agent0 subgraphs ${round(totalAgents)}; the gap is one unavailable indexer`,
     });
+    if (second.testnet != null) {
+      const all = second.mainnet + second.testnet;
+      out.push({
+        finding: `Most quoted totals include testnets`,
+        figure: `${pct(second.testnet / all)} are testnet`,
+        basis: `${round(second.testnet)} of ${round(all)} agents sit where nothing is at stake`,
+      });
+    }
   }
 
-  // 7. The registry that is empty everywhere, which is worth saying out loud.
   out.push({
-    says: `Nothing here has been independently checked. The validation registry, which is the part of the standard meant to verify that an agent did what it claims, is empty on every chain.`,
-    evidence: `Zero validation records indexed across ${live.length} chains.`,
+    finding: `Nothing has been validated`,
+    figure: `0 records`,
+    basis: `the validation registry is empty on all ${live.length} chains`,
   });
 
   return out;
