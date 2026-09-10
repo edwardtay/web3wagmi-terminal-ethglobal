@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment, useState } from "react";
 import { useApi } from "@/lib/useApi";
 import { Section, Panel, Loading, Unavailable, AsOf, TableWrap, Th } from "./ui";
 import { num } from "@/lib/format";
@@ -38,6 +39,11 @@ interface Row {
     ratings: number;
     medianScore: number | null;
   } | null;
+  registries: {
+    identityRegistry?: string | null;
+    reputationRegistry?: string | null;
+    validationRegistry?: string | null;
+  } | null;
   error?: string;
 }
 interface Payload {
@@ -60,8 +66,12 @@ interface Payload {
   note: string | null;
 }
 
+/** How many columns the chain table has, so a detail row can span them. */
+const CHAIN_COLUMNS = 9;
+
 export function AgentEconomy() {
   const { data, loading, failed } = useApi<Payload>("/api/agents", 1800);
+  const [open, setOpen] = useState<string | null>(null);
 
   const body = () => {
     if (loading) return <Loading rows={5} />;
@@ -127,7 +137,11 @@ export function AgentEconomy() {
           </thead>
           <tbody>
             {data.rows.map((r) => (
-              <tr key={r.chain}>
+              <Fragment key={r.chain}>
+              <tr
+                onClick={() => !r.error && setOpen((v) => (v === r.chain ? null : r.chain))}
+                className={r.error ? undefined : "cursor-pointer"}
+              >
                 <td>
                   <div className="flex items-center gap-1.5">
                     <span
@@ -137,6 +151,11 @@ export function AgentEconomy() {
                     />
                     <span className="break-words font-semibold text-[var(--text)]">{r.chain}</span>
                   </div>
+                  {!r.error && (
+                    <div className="font-mono text-[9px] text-[var(--text3)]">
+                      {open === r.chain ? "hide" : "detail"}
+                    </div>
+                  )}
                 </td>
                 {r.error ? (
                   <td colSpan={9} className="break-words text-[11px] text-[var(--text3)]">
@@ -167,6 +186,10 @@ export function AgentEconomy() {
                   </>
                 )}
               </tr>
+              {open === r.chain && !r.error && (
+                <ChainDetail row={r} agents={data.rated.filter((a) => a.chain === r.chain)} />
+              )}
+              </Fragment>
             ))}
           </tbody>
         </TableWrap>
@@ -237,15 +260,8 @@ export function AgentEconomy() {
                 ))}
               </tbody>
             </TableWrap>
-            <p className="mt-2 text-[11px] leading-relaxed text-[var(--text3)]">
-              Capability columns are the newest 500 registrations on each chain, which is one page
-              from the gateway. They say where the standard is heading rather than what the whole
-              population looks like.
-            </p>
           </div>
         )}
-
-        {data.asOf && <AsOf iso={data.asOf} staleMs={2 * 60 * 60 * 1000} />}
       </>
     );
   };
@@ -254,10 +270,94 @@ export function AgentEconomy() {
     <Section
       title="Agent economy"
       id="agents"
-      hint="ERC-8004 gives an agent an onchain identity and a reputation, in registries deployed once per chain, read here through The Graph's Agent0 subgraphs. Validation records are indexed and empty on every chain, which is the standard's current state rather than a gap here."
+      hint="ERC-8004 gives an agent an onchain identity and a reputation, in registries deployed once per chain, read here through The Graph's Agent0 subgraphs and cross-checked against 8004scan. The MCP, A2A and x402 columns are the newest 500 registrations per chain, which is one page from the gateway, so they say where the standard is heading rather than what the whole population looks like. Validation records are indexed and empty everywhere, which is the standard's current state rather than a gap here."
+      right={<AsOf iso={data?.asOf} staleMs={2 * 60 * 60 * 1000} />}
     >
       <Panel>{body()}</Panel>
     </Section>
+  );
+}
+
+/**
+ * One chain, opened up.
+ *
+ * The row answers how many and how active. What it cannot carry without
+ * becoming unreadable is the trust model split, how much of the sample is
+ * still marked active, what the median rests on, and the three contracts the
+ * registries actually live at. That last one matters most: an address is the
+ * thing a reader can paste into a block explorer and check for themselves,
+ * which is a different kind of claim from a number on a page.
+ */
+function ChainDetail({ row, agents }: { row: Row; agents: Payload["rated"] }) {
+  const s = row.sample;
+  const trusts = Object.entries(s?.trusts ?? {}).sort((a, b) => b[1] - a[1]);
+  const reg = row.registries;
+  return (
+    <tr>
+      <td colSpan={CHAIN_COLUMNS} className="bg-[var(--bg2)] p-0">
+        {/* Pinned left and sized to the window, because a full-width cell in a
+            scrolling table is as wide as the table and none of this is tabular. */}
+        <div className="sticky left-0 w-[min(100%,100vw-2rem)] space-y-2.5 px-3 py-3">
+          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1.5 text-[11px]">
+            <span className="text-[var(--text3)]">
+              active <span className="font-mono font-semibold text-[var(--text2)]">{s ? `${s.active} of ${s.n}` : "n/a"}</span>
+            </span>
+            <span className="text-[var(--text3)]">
+              median rating{" "}
+              <span className="font-mono font-semibold text-[var(--text2)]">
+                {s?.medianScore == null ? "withheld" : `${s.medianScore} of 100`}
+              </span>{" "}
+              {s ? `on ${s.ratings} scored` : ""}
+            </span>
+          </div>
+
+          {trusts.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="font-mono text-[9px] uppercase tracking-wider text-[var(--text3)]">trust model</span>
+              {trusts.map(([k, v]) => (
+                <span key={k} className="rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-px font-mono text-[10px] text-[var(--text2)]">
+                  {k} {v}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {agents.length > 0 && (
+            <div>
+              <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-[var(--text3)]">
+                most rated here
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+                {agents.map((a) => (
+                  <span key={a.agentId} className="text-[var(--text2)]">
+                    {a.name ?? "unnamed"}{" "}
+                    <span className="font-mono text-[var(--text3)]">{num(a.ratings, 0)}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {reg && (
+            <div>
+              <div className="mb-1 font-mono text-[9px] uppercase tracking-wider text-[var(--text3)]">
+                registries, singleton per chain
+              </div>
+              <div className="space-y-0.5 font-mono text-[10px] text-[var(--text3)]">
+                {([["identity", reg.identityRegistry], ["reputation", reg.reputationRegistry], ["validation", reg.validationRegistry]] as const).map(
+                  ([label, addr]) =>
+                    addr ? (
+                      <div key={label} className="break-all">
+                        <span className="text-[var(--text2)]">{label}</span> {addr}
+                      </div>
+                    ) : null
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </td>
+    </tr>
   );
 }
 

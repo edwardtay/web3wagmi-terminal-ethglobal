@@ -84,6 +84,11 @@ export const AGENT_QUERY = `{
     valueRaw
     valueDecimals
   }
+  registries: protocols(first: 1) {
+    identityRegistry
+    reputationRegistry
+    validationRegistry
+  }
   top: agents(first: 6, orderBy: totalFeedback, orderDirection: desc) {
     agentId
     totalFeedback
@@ -125,6 +130,8 @@ export interface AgentChainRow {
     ratings: number;
     medianScore: number | null;
   } | null;
+  /** The three singleton contracts this chain's registries live at. */
+  registries: Registry | null;
   /** Why this chain did not answer, when it did not. */
   error?: string;
 }
@@ -206,8 +213,14 @@ interface TopAgent {
     x402Support?: boolean | null;
   } | null;
 }
+interface Registry {
+  identityRegistry?: string | null;
+  reputationRegistry?: string | null;
+  validationRegistry?: string | null;
+}
 interface Reply {
   data?: {
+    registries?: Registry[];
     agents?: Bucket[];
     feedback?: Bucket[];
     files?: RegFile[];
@@ -415,14 +428,32 @@ function readings(rows: AgentChainRow[], top: RatedAgent[], second: CrossCheck |
     }
   }
 
-  out.push({
-    finding: `Nothing has been validated`,
-    figure: `0 records`,
-    basis: `the validation registry is empty on all ${live.length} chains`,
-  });
+  // Empty was the first reading, and it was the weaker one. The registries
+  // report their own contract addresses, and the validation registry answers
+  // with the zero address on every chain: it is not that nobody has used the
+  // third pillar of this standard, it is that the contract does not exist. That
+  // came out of putting the addresses on screen, which is a good argument for
+  // showing an address rather than a count.
+  const undeployed = live.filter((r) => r.registries?.validationRegistry === ZERO_ADDRESS).length;
+  out.push(
+    undeployed === live.length
+      ? {
+          finding: `Validation is not deployed`,
+          figure: `0x0 on all ${live.length} chains`,
+          basis: `the third registry of the standard, meant to verify an agent did what it claims, has no contract behind it`,
+        }
+      : {
+          finding: `Nothing has been validated`,
+          figure: `0 records`,
+          basis: `the validation registry is empty on all ${live.length} chains`,
+        }
+  );
 
   return out;
 }
+
+/** A registry pointing here has no contract behind it. */
+const ZERO_ADDRESS = `0x${"0".repeat(40)}`;
 
 const mcpShare = (r: AgentChainRow) => (r.sample && r.sample.n ? r.sample.mcp / r.sample.n : 0);
 const pct = (v: number) => `${v < 0.01 && v > 0 ? "under 1" : Math.round(v * 100)}%`;
@@ -466,6 +497,7 @@ export async function readAgentEconomy(revalidate: number): Promise<AgentEconomy
       feedback: null,
       feedbackPerAgent: null,
       sample: null,
+      registries: null,
     };
     const reply = replies[i];
     if (!reply) return { ...blank, error: "No answer from the gateway." };
@@ -488,6 +520,7 @@ export async function readAgentEconomy(revalidate: number): Promise<AgentEconomy
       feedback: f.latest,
       feedbackPerAgent: a.latest && a.latest > 0 && f.latest != null ? f.latest / a.latest : null,
       sample,
+      registries: body.data?.registries?.[0] ?? null,
     };
   });
 
