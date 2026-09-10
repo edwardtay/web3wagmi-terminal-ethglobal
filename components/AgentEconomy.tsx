@@ -48,6 +48,7 @@ interface Payload {
   totalFeedback: number;
   answered: number;
   attempted: number;
+  readings: { says: string; evidence: string }[];
   rated: {
     chain: string;
     agentId: string;
@@ -74,6 +75,28 @@ export function AgentEconomy() {
     }
     return (
       <>
+        {/* The reading, before the grid.
+            A table of counts about a standard most readers have never heard of
+            is homework rather than intelligence. Every other desk here states
+            what its numbers mean and this one did not, so a reader who did not
+            already follow ERC-8004 got four hundred thousand of something and
+            no way to tell whether that was a lot, a little, or mostly noise.
+            Written in code, each line carrying the row it came from. */}
+        {data.readings.length > 0 && (
+          <ul className="mb-4 space-y-2">
+            {data.readings.map((r) => (
+              <li key={r.says} className="border-l-2 border-[var(--accent2)] pl-2.5">
+                <div className="break-words text-[13px] font-semibold leading-snug text-[var(--text)]">
+                  {r.says}
+                </div>
+                <div className="mt-0.5 break-words font-mono text-[10px] leading-relaxed text-[var(--text3)]">
+                  {r.evidence}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
         <p className="mb-3 text-[12px] leading-relaxed text-[var(--text2)]">
           {num(data.totalAgents, 0)} agents hold an ERC-8004 identity across {data.answered} chains
           and clients have written {num(data.totalFeedback, 0)} ratings about them. An identity is

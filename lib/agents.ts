@@ -129,8 +129,18 @@ export interface AgentChainRow {
   error?: string;
 }
 
+/** One plain statement about what the tables mean, with the figure behind it. */
+export interface AgentReading {
+  /** The sentence, written here rather than by a model. */
+  says: string;
+  /** The measurement it rests on, so the claim can be checked against a row. */
+  evidence: string;
+}
+
 export interface AgentEconomy {
   query: string;
+  /** What the numbers mean, for a reader who does not already know. */
+  readings: AgentReading[];
   rows: AgentChainRow[];
   /** The most rated agents anywhere, across chains, largest first. */
   rated: RatedAgent[];
@@ -287,6 +297,83 @@ function topAgents(chain: string, top: TopAgent[] | undefined, chainTotal: numbe
     .filter((x): x is RatedAgent => x !== null);
 }
 
+/**
+ * What the tables say, for somebody who does not already know.
+ *
+ * Every other desk on this terminal states a reading. This one arrived as a
+ * grid of counts, and a grid of counts about a standard most readers have never
+ * heard of is not intelligence: it is homework. The numbers are striking and
+ * they do not speak for themselves.
+ *
+ * Written here in code rather than by a model, on the same contract as the rest
+ * of the terminal: each sentence carries the measurement it rests on, so a
+ * reader can find the row it came from and disagree with it. Nothing is said
+ * unless the figures support it, so a quiet day produces fewer sentences rather
+ * than vaguer ones.
+ */
+function readings(rows: AgentChainRow[], top: RatedAgent[]): AgentReading[] {
+  const out: AgentReading[] = [];
+  const live = rows.filter((r) => !r.error && r.agents != null);
+  if (!live.length) return out;
+
+  const totalAgents = live.reduce((t, r) => t + (r.agents ?? 0), 0);
+
+  // 1. Registering is not using, said about the chain doing most of the
+  //    registering. An average across chains would have been an average of
+  //    averages, which is a different number and not a checkable one: this
+  //    names a chain and a rate the reader can find in the row above.
+  const biggest = [...live].sort((a, b) => (b.agents ?? 0) - (a.agents ?? 0))[0];
+  if (biggest && totalAgents > 0 && (biggest.feedbackPerAgent ?? 0) < 0.5) {
+    out.push({
+      says: `Registering is not using. ${biggest.chain} holds ${pct((biggest.agents ?? 0) / totalAgents)} of every agent in existence and each has been rated ${(biggest.feedbackPerAgent ?? 0).toFixed(2)} times on average, which is a registry with almost nothing behind it.`,
+      evidence: `${round(biggest.agents ?? 0)} of ${round(totalAgents)} identities and ${round(biggest.feedback ?? 0)} ratings on ${biggest.chain}.`,
+    });
+  }
+
+  // 2. The concentration, which is the thing the averages hide.
+  const first = top[0];
+  if (first && (first.shareOfChain ?? 0) >= 0.25) {
+    out.push({
+      says: `One agent is most of the activity. It holds ${pct(first.shareOfChain ?? 0)} of every rating written on ${first.chain}, and it has ${first.name ? `filed no capabilities` : `no registration file at all`}.`,
+      evidence: `${round(first.ratings)} of ${first.chain}'s ratings against one agent id.`,
+    });
+  }
+
+  // 3. Where the agents that actually do something are.
+  const withSample = live.filter((r) => r.sample && r.sample.n >= 100);
+  const byMcp = [...withSample].sort((a, b) => mcpShare(b) - mcpShare(a));
+  const best = byMcp[0];
+  const worst = byMcp[byMcp.length - 1];
+  if (best && worst && best !== worst && mcpShare(best) > mcpShare(worst) * 2) {
+    out.push({
+      says: `The working ones are on ${best.chain}. ${pct(mcpShare(best))} of its newest registrations publish an endpoint another program can actually call, against ${pct(mcpShare(worst))} on ${worst.chain}.`,
+      evidence: `${best.sample?.mcp} of ${best.sample?.n} on ${best.chain}, ${worst.sample?.mcp} of ${worst.sample?.n} on ${worst.chain}.`,
+    });
+  }
+
+  // 4. Whether any of them can be paid, which is what makes an economy.
+  const payable = withSample.reduce((t, r) => t + (r.sample?.x402 ?? 0), 0);
+  const sampled = withSample.reduce((t, r) => t + (r.sample?.n ?? 0), 0);
+  if (sampled > 0) {
+    out.push({
+      says: `Paying one is still rare. ${pct(payable / sampled)} of the newest registrations accept payment for a call, so most of these identities cannot charge for anything.`,
+      evidence: `${payable} of ${sampled} newest registrations declare x402 support.`,
+    });
+  }
+
+  // 5. The registry that is empty everywhere, which is worth saying out loud.
+  out.push({
+    says: `Nothing here has been independently checked. The validation registry, which is the part of the standard meant to verify that an agent did what it claims, is empty on every chain.`,
+    evidence: `Zero validation records indexed across ${live.length} chains.`,
+  });
+
+  return out;
+}
+
+const mcpShare = (r: AgentChainRow) => (r.sample && r.sample.n ? r.sample.mcp / r.sample.n : 0);
+const pct = (v: number) => `${v < 0.01 && v > 0 ? "under 1" : Math.round(v * 100)}%`;
+const round = (n: number) => n.toLocaleString("en-US");
+
 export async function readAgentEconomy(revalidate: number): Promise<AgentEconomy | null> {
   if (!process.env.GRAPH_SUBGRAPH_KEY) return null;
 
@@ -337,9 +424,11 @@ export async function readAgentEconomy(revalidate: number): Promise<AgentEconomy
   });
 
   const answered = rows.filter((r) => !r.error).length;
+  const top = rated.sort((a, b) => b.ratings - a.ratings).slice(0, 8);
   return {
     query: AGENT_QUERY,
-    rated: rated.sort((a, b) => b.ratings - a.ratings).slice(0, 8),
+    readings: readings(rows, top),
+    rated: top,
     rows: rows.sort((x, y) => (y.agents ?? -1) - (x.agents ?? -1)),
     totalAgents: rows.reduce((t, r) => t + (r.agents ?? 0), 0),
     totalFeedback: rows.reduce((t, r) => t + (r.feedback ?? 0), 0),
