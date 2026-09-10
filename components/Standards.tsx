@@ -157,50 +157,61 @@ export function Standards() {
         {(() => {
           const signed = data.rows.filter((r) => r.attestation);
           if (!signed.length) return null;
-          const a = signed[0].attestation!;
-          const id = signed[0].subgraphId;
           return (
             <details className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--bg2)] p-2.5">
               <summary className="cursor-pointer text-[11px] text-[var(--text2)]">
                 {signed.length} of {data.rows.length} answers arrived signed by the indexer that
-                served them. Open for the signature over this table.
+                served them. Open for one signature per subgraph.
               </summary>
-              <div className="mt-2 space-y-1 font-mono text-[10px] leading-relaxed text-[var(--text3)]">
-                {/* Clickable, because a hash printed on a page is a claim and
-                    the explorer showing the same deployment is evidence. */}
-                <div className="break-all">
-                  <span className="text-[var(--text2)]">deployment</span>{" "}
-                  {id ? (
-                    <a
-                      href={`https://thegraph.com/explorer/subgraphs/${id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[var(--accent)] underline decoration-dotted underline-offset-2"
-                    >
-                      {a.subgraphDeploymentID}
-                    </a>
-                  ) : (
-                    a.subgraphDeploymentID
-                  )}
-                </div>
-                <div className="break-all">
-                  <span className="text-[var(--text2)]">request</span> {a.requestCID}
-                </div>
-                <div className="break-all">
-                  <span className="text-[var(--text2)]">response</span> {a.responseCID}
-                </div>
-                <div className="break-all">
-                  <span className="text-[var(--text2)]">signature</span> r {a.r}
-                </div>
-                <div className="break-all">
-                  <span className="text-[var(--text2)]">&nbsp;</span> s {a.s}, v {a.v}
-                </div>
+
+              {/* Every row, not the first one.
+                  Showing a single attestation under a nine row table implied
+                  the whole table came from that subgraph, which is the opposite
+                  of the claim the panel exists to make. Nine deployments, nine
+                  signatures, nine links: the separateness is the point, and it
+                  is visible here rather than asserted above. */}
+              <div className="mt-2 space-y-2">
+                {signed.map((r) => {
+                  const a = r.attestation!;
+                  return (
+                    <div key={r.label} className="border-l-2 border-[var(--border)] pl-2">
+                      <div className="text-[11px] font-semibold text-[var(--text)]">{r.label}</div>
+                      <div className="break-all font-mono text-[10px] leading-relaxed text-[var(--text3)]">
+                        <span className="text-[var(--text2)]">deployment</span>{" "}
+                        {r.subgraphId ? (
+                          <a
+                            href={`https://thegraph.com/explorer/subgraphs/${r.subgraphId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[var(--accent)] underline decoration-dotted underline-offset-2"
+                          >
+                            {a.subgraphDeploymentID}
+                          </a>
+                        ) : (
+                          a.subgraphDeploymentID
+                        )}
+                      </div>
+                      <div className="break-all font-mono text-[10px] leading-relaxed text-[var(--text3)]">
+                        <span className="text-[var(--text2)]">signature</span> r {a.r}
+                      </div>
+                      <div className="break-all font-mono text-[10px] leading-relaxed text-[var(--text3)]">
+                        <span className="text-[var(--text2)]">&nbsp;</span> s {a.s}, v {a.v}
+                      </div>
+                      <div className="break-all font-mono text-[10px] leading-relaxed text-[var(--text3)]">
+                        <span className="text-[var(--text2)]">hashes</span> request{" "}
+                        {a.requestCID.slice(0, 14)}… response {a.responseCID.slice(0, 14)}…
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <p className="mt-2 text-[11px] leading-relaxed text-[var(--text2)]">
-                {signed[0].label}&apos;s indexer signed the hash of the query above and the hash of
-                the answer in this table. It is the one thing on this page that could not have been
-                written here. The deployment links to The Graph&apos;s own explorer, where the same
-                subgraph can be queried directly.
+
+              <p className="mt-2.5 text-[11px] leading-relaxed text-[var(--text2)]">
+                Each row of the table above came from its own subgraph, and each one signed its own
+                answer: {signed.length} deployments, {signed.length} signatures. The deployment links
+                to The Graph&apos;s explorer, where that subgraph can be queried directly. The
+                hashes and the signature do not link, because a keccak hash of a query and an ECDSA
+                signature over it are not objects anything resolves.
               </p>
             </details>
           );
