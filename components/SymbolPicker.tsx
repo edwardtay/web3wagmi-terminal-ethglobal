@@ -85,6 +85,20 @@ export function SymbolPicker() {
     setOpen(false);
     setQuery("");
     buttonRef.current?.focus();
+
+    // Take the reader to what they just changed.
+    //
+    // This control drives four panels further down the page and nothing at the
+    // top of it, so choosing a symbol from the header used to update those
+    // panels silently and leave the reader wherever they were: often halfway
+    // down the order book, watching a different asset's depth without an
+    // obvious reason for it. The header shows the new ticker, which is the only
+    // feedback there was.
+    //
+    // The focus section is where the change is legible, and it carries the
+    // scroll margin that clears the sticky chrome, so scrollIntoView lands
+    // under the header rather than beneath it.
+    document.getElementById("focus")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function onKeyDown(e: React.KeyboardEvent) {

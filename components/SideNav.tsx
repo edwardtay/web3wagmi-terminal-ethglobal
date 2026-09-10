@@ -50,7 +50,7 @@ export const SECTION_GROUPS: { label: string; items: { id: string; label: string
     label: "On-chain",
     items: [
       { id: "netflow", label: "Exchange flow" },
-      { id: "agents", label: "Agent economy" },
+      { id: "agents", label: "Agents" },
       { id: "dex", label: "DEX pools" },
       { id: "chains", label: "Chains" },
       { id: "protocols", label: "Protocols" },
@@ -147,7 +147,13 @@ function DesktopRail({ active }: { active: string }) {
     >
       {SECTION_GROUPS.map((g) => (
         <div key={g.label} className="mb-4">
-          <div className="mb-1 px-2 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[var(--text3)]">
+          {/* The group label is the thing that makes this a structure rather
+              than a list of twenty-seven links, and it was the faintest text
+              on the rail: --text3 at 9px, lighter than the entries beneath it,
+              so the groups it names read as gaps. A rule and a darker weight
+              cost nothing and let the eye find "Derivatives" without reading
+              it. */}
+          <div className="mb-1.5 border-b border-[var(--border)] px-2 pb-1 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[var(--text2)]">
             {g.label}
           </div>
           <ul className="space-y-0.5">

@@ -1153,11 +1153,20 @@ export function tighten(text: string): string {
   if (lastTruncated && kept.length) {
     const joined = kept.join(" ");
     const sentences = joined.split(/(?<=[.!?])\s+(?=[A-Z(])/).filter((s) => s.trim());
-    if (sentences.length > 1) {
-      sentences.pop();
-      kept.length = 0;
-      kept.push(sentences.join(" "));
-    }
+    // Drop the last sentence even when it is the only one.
+    //
+    // The previous guard kept a lone sentence rather than emptying the result,
+    // which sounds cautious and published "ETH implied volatility is." as a
+    // morning brief. The loop above welds a full stop onto any line that lacks
+    // one, so a cut-off fragment arrives here already looking like a sentence
+    // and the guard had no way to tell it apart from a real one.
+    //
+    // Nothing left is the honest outcome for an answer that was cut before it
+    // said anything. Both callers already handle it: the assistant rejects an
+    // empty tightening and asks again, and the brief keeps the previous note.
+    sentences.pop();
+    kept.length = 0;
+    if (sentences.length) kept.push(sentences.join(" "));
   }
 
   let out = kept.join(" ").replace(/\s+/g, " ").trim();

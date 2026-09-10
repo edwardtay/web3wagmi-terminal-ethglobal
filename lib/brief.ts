@@ -23,6 +23,15 @@ import { usdCompact } from "./format";
 // where a reading has a conventional meaning it says that, which is the same
 // contract every other panel here keeps.
 
+/**
+ * Below this many words the model did not write a note, whatever it returned.
+ *
+ * The prompt asks for three to five sentences of under twenty-five words each,
+ * so the shortest legitimate note is around forty. Thirty leaves room for a
+ * terse day without admitting a fragment.
+ */
+const MIN_BRIEF_WORDS = 30;
+
 /** How long a brief stands before another is written. */
 export const BRIEF_TTL = 6 * 60 * 60;
 
@@ -238,7 +247,13 @@ export async function writeBrief(origin: string): Promise<Brief | null> {
   );
 
   const text = reply?.content ? tighten(plain(reply.content)) : null;
-  if (!text) return null;
+  // A floor, because a note is a paragraph and anything shorter is wreckage.
+  //
+  // "ETH implied volatility is." went out as a morning brief: the model was cut
+  // mid-sentence, and every layer below treated a fragment ending in a full
+  // stop as prose. Returning null here keeps the previous note standing, which
+  // is a better answer than four words.
+  if (!text || text.split(/\s+/).length < MIN_BRIEF_WORDS) return null;
 
   return {
     date: now.toISOString().slice(0, 10),
