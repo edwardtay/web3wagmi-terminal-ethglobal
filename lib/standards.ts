@@ -101,6 +101,13 @@ export interface StandardRow {
   revenue7dUsd: number | null;
   /** The share of those fees the protocol kept rather than paid out. */
   protocolSide7dUsd: number | null;
+  /**
+   * The subgraph this row came from, so the panel can link to it.
+   *
+   * A demo can open the explorer and show the same deployment answering the
+   * same query, which is a stronger claim than a hash printed on a page.
+   */
+  subgraphId: string;
   /** Unix seconds of the newest snapshot, so a stale subgraph is visible. */
   asOf: number | null;
   /**
@@ -138,8 +145,9 @@ interface Reply {
 }
 
 /** A row that answered nothing, so every failure shape stays one shape. */
-const blank = (label: string): StandardRow => ({
-  label, name: null, type: null, tvlUsd: null, revenueUsd: null, users: null,
+const blank = (label: string, id = ""): StandardRow => ({
+  label,
+  subgraphId: id, name: null, type: null, tvlUsd: null, revenueUsd: null, users: null,
   revenue7dUsd: null, protocolSide7dUsd: null, asOf: null, takePct: null, staleDays: null,
   attestation: null,
 });
@@ -267,15 +275,15 @@ export async function readStandards(revalidate: number): Promise<Standards | nul
   const replies = await Promise.all(SUBGRAPHS.map((s) => one(s.id, revalidate)));
   const rows: StandardRow[] = SUBGRAPHS.map((s, i) => {
     const reply = replies[i];
-    if (!reply) return { ...blank(s.label), error: "No answer from the gateway." };
+    if (!reply) return { ...blank(s.label, s.id), error: "No answer from the gateway." };
     const r = reply.body;
     // Kept even on a failed row: the signature says the gateway answered, which
     // is a different fact from whether the schema had what we asked for.
     const attestation = readAttestation(reply.headers);
     if (r.errors?.length)
-      return { ...blank(s.label), attestation, error: String(r.errors[0]?.message ?? "Query rejected.").slice(0, 140) };
+      return { ...blank(s.label, s.id), attestation, error: String(r.errors[0]?.message ?? "Query rejected.").slice(0, 140) };
     const p = r.data?.protocols?.[0];
-    if (!p) return { ...blank(s.label), attestation, error: "The schema answered but held no protocol row." };
+    if (!p) return { ...blank(s.label, s.id), attestation, error: "The schema answered but held no protocol row." };
     const snaps = r.data?.financialsDailySnapshots ?? [];
     const week = {
       revenue7dUsd: sum(snaps, "dailyTotalRevenueUSD"),
@@ -284,6 +292,7 @@ export async function readStandards(revalidate: number): Promise<Standards | nul
     };
     return {
       label: s.label,
+      subgraphId: s.id,
       ...week,
       takePct: takePct(week),
       staleDays: staleDays(week.asOf),

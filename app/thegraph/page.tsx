@@ -173,43 +173,58 @@ export default function TheGraphPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {[
-                      ["Reads per refresh", "240 archive calls", "176 indexed reads"],
-                      ["What a read returns", "one balance at one block", "a thirty day daily series"],
-                      ["Windows", "1h, 24h, 7d", "24h, 7d"],
+                    {/* `win` marks the rows where the indexed path does
+                        something the archive path cannot, rather than every row
+                        where the two differ. Two rows go the other way and stay
+                        uncoloured: the archive path has an hour window this one
+                        does not, and it is free. A comparison that painted
+                        itself green throughout would be an advertisement. */}
+                    {([
+                      ["Reads per refresh", "240 archive calls", "176 indexed reads", false],
+                      ["What a read returns", "one balance at one block", "a thirty day daily series", true],
+                      ["Windows", "1h, 24h, 7d", "24h, 7d", false],
                       [
                         "How a window is dated",
                         "block height, assuming 12s blocks",
                         "the timestamp on the bar",
+                        true,
                       ],
-                      ["History on the panel", "none, three numbers", "thirty days, charted"],
-                      ["Tokens", "4, hardcoded", "4, plus supply and holders"],
-                      ["Holder concentration", "not possible", "top ten share, contracts split from wallets"],
-                      ["Onchain absorption", "not possible", "deposits against DEX daily volume"],
-                      ["Signal kinds in the queue", "5", "6"],
-                      ["Answerable by the question box", "nothing on-chain", "flow, absorption, ownership"],
-                      ["Upstream", "free archive nodes that rate limit", "an index"],
-                      ["Cost", "free", "$6.07 a month of a $25 credit"],
-                    ].map(([row, before, after]) => (
+                      ["History on the panel", "none, three numbers", "thirty days, charted", true],
+                      ["Tokens", "4, hardcoded", "4, plus supply and holders", true],
+                      ["Holder concentration", "not possible", "top ten share, contracts split from wallets", true],
+                      ["Onchain absorption", "not possible", "deposits against DEX daily volume", true],
+                      ["Signal kinds in the queue", "5", "6", false],
+                      ["Answerable by the question box", "nothing on-chain", "flow, absorption, ownership", true],
+                      ["Upstream", "free archive nodes that rate limit", "an index", false],
+                      ["Cost", "free", "$6.07 a month of a $25 credit", false],
+                    ] as [string, string, string, boolean][]).map(([row, before, after, win]) => (
                       <tr key={row}>
                         <td className="font-semibold text-[var(--text)]">{row}</td>
                         <td className="text-[var(--text3)]">{before}</td>
-                        <td className="text-[var(--text2)]">{after}</td>
+                        <td
+                          className={win ? "font-semibold" : "text-[var(--text2)]"}
+                          style={win ? { color: "var(--pos)" } : undefined}
+                        >
+                          {after}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
               <p className="mt-3 text-[12px] leading-relaxed text-[var(--text2)]">
-                The call count is the least of it. Fewer reads was never the win, and the indexed
-                path is not dramatically cheaper in requests. What changed is that a window is now
-                measured against a real timestamp instead of an assumed block time, that three
-                readings became a series, and that two questions the desk could not ask at all,
-                who holds this and where would a sale land, are now rows on the panel.
+                Green marks the six rows where the indexed path does something the archive path
+                cannot, which is the only comparison worth making. The call count is not one of
+                them: fewer reads was never the win and the indexed path is not dramatically
+                cheaper in requests. What changed is that a window is measured against a real
+                timestamp instead of an assumed block time, that three readings became a series,
+                and that two questions the desk could not ask at all, who holds this and where
+                would a sale land, are rows on the panel.
               </p>
               <p className="mt-2 text-[12px] leading-relaxed text-[var(--text2)]">
-                Both paths ship. Clone the repo with no key and the archive path answers, and the
-                payload names which one did.
+                Two rows go the other way and are deliberately not green. The archive path has an
+                hour window this one does not, and it is free. Both paths ship: clone the repo with
+                no key and the archive path answers, and the payload names which one did.
               </p>
             </Panel>
           </Section>

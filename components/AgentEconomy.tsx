@@ -345,12 +345,34 @@ function ChainDetail({ row, agents }: { row: Row; agents: Payload["rated"] }) {
               </div>
               <div className="space-y-0.5 font-mono text-[10px] text-[var(--text3)]">
                 {([["identity", reg.identityRegistry], ["reputation", reg.reputationRegistry], ["validation", reg.validationRegistry]] as const).map(
-                  ([label, addr]) =>
-                    addr ? (
+                  ([label, addr]) => {
+                    if (!addr) return null;
+                    const base = EXPLORER[row.chain];
+                    // The zero address is not a contract, so it does not link.
+                    // Sending a reader to an explorer page for 0x0 would suggest
+                    // there is something there to look at.
+                    const dead = /^0x0{40}$/i.test(addr);
+                    return (
                       <div key={label} className="break-all">
-                        <span className="text-[var(--text2)]">{label}</span> {addr}
+                        <span className="text-[var(--text2)]">{label}</span>{" "}
+                        {base && !dead ? (
+                          <a
+                            href={`${base}${addr}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[var(--accent)] underline decoration-dotted underline-offset-2"
+                          >
+                            {addr}
+                          </a>
+                        ) : (
+                          <span style={dead ? { color: "var(--neg)" } : undefined}>
+                            {addr}
+                            {dead ? " (not deployed)" : ""}
+                          </span>
+                        )}
                       </div>
-                    ) : null
+                    );
+                  }
                 )}
               </div>
             </div>
@@ -360,6 +382,22 @@ function ChainDetail({ row, agents }: { row: Row; agents: Payload["rated"] }) {
     </tr>
   );
 }
+
+/**
+ * Where to look a registry contract up, by chain.
+ *
+ * The address is already the most checkable thing in this panel and a link is
+ * what makes that practical on camera. Absent for a chain without a explorer we
+ * are sure of, in which case the address still shows and simply does not link:
+ * a wrong explorer is worse than none, because it sends a reader to a page that
+ * says the contract does not exist.
+ */
+const EXPLORER: Record<string, string> = {
+  Ethereum: "https://etherscan.io/address/",
+  Base: "https://basescan.org/address/",
+  BSC: "https://bscscan.com/address/",
+  Polygon: "https://polygonscan.com/address/",
+};
 
 /** A count against its own denominator, which never leaves the number's side. */
 function share(k: number | undefined, n: number | undefined): string {
