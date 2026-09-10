@@ -130,7 +130,7 @@ export default function TheGraphPage() {
                 <p>
                   Asked which Uniswap pool is deepest for WBTC, it wrote a query, got a field name
                   wrong, read the error, fixed it and answered: the WBTC/WETH pool at
-                  0xcbcdf962, $206m locked.
+                  0xcbcdf962, with about $200m locked at the time.
                 </p>
                 <p>
                   Errors come back as text rather than null for exactly that reason. A model told

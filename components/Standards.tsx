@@ -103,8 +103,8 @@ export function Standards() {
               <Th label="Category" hint="Messari's category, not the protocol's own. MakerDAO reads LENDING and Lido reads GENERIC because a shared vocabulary only counts as shared if it overrides the local one." />
               <Th label="TVL" num hint="The schema's definition. For a lending market that is total deposits, before subtracting what has been borrowed against them." />
               <Th label="Fees 7d" num hint="Seven days of total revenue, summed from the same daily snapshot entity every one of these subgraphs exposes. This is the fee the protocol generated, before splitting it." />
-              <Th label="Take" num hint="The share of those fees the protocol itself kept rather than paid to suppliers. A lending market that keeps 12% is running a thinner cut than one that keeps 88%. No aggregator gives this split: it exists because the schema defines supply side and protocol side separately. Withheld under fifty thousand dollars of weekly fees, because a wound-down protocol earning ten thousand and keeping all of it would otherwise top this column." />
-              <Th label="Supply revenue" num hint="Cumulative, since the protocol's deployment. Paid to depositors and liquidity providers rather than kept. Blank where the subgraph reports a figure the world cannot support: Curve's mapping returns 1.88e20 dollars here, which is more than everything humans own, so it is withheld rather than repeated. That is an upstream mapping bug rather than a reading, and it is not ours to correct." />
+              <Th label="Take" num hint="The share of those fees the protocol itself kept rather than paid to suppliers. A lending market that keeps a tenth of its fees is running a far thinner cut than one that keeps most of them, and both are in the column. No aggregator gives this split: it exists because the schema defines supply side and protocol side separately. Withheld under fifty thousand dollars of weekly fees, because a wound-down protocol earning ten thousand and keeping all of it would otherwise top this column." />
+              <Th label="Supply revenue" num hint="Cumulative, since the protocol's deployment. Paid to depositors and liquidity providers rather than kept. Blank where the subgraph reports a figure the world cannot support: Curve's mapping has returned a figure larger than everything humans own, so it is withheld rather than repeated. That is an upstream mapping bug rather than a reading, and it is not ours to correct." />
               <Th label="Users" num hint="Cumulative unique addresses, by the schema's count." />
             </tr>
           </thead>
@@ -234,7 +234,7 @@ export function Standards() {
     <Section
       title="One query, many protocols"
       id="standards"
-      hint="A standardized subgraph schema, queried once and answered by every protocol that shares it. Each row is one deployment on Ethereum mainnet, not a protocol across every chain and version, and TVL is the schema's own definition: for a lending market that is total deposits, before subtracting what has been borrowed against them. Aave v3 reads $24.7b here and $18.3b on DefiLlama for exactly those two reasons, and neither is wrong. Comparing the rows to each other is the point; comparing one of them to another aggregator is comparing two different definitions."
+      hint="A standardized subgraph schema, queried once and answered by every protocol that shares it. Each row is one deployment on Ethereum mainnet, not a protocol across every chain and version, and TVL is the schema's own definition: for a lending market that is total deposits, before subtracting what has been borrowed against them. Aave v3 therefore reads higher here than on an aggregator, and neither is wrong. Comparing the rows to each other is the point; comparing one of them to another aggregator is comparing two different definitions."
     >
       <Panel>{body()}</Panel>
     </Section>

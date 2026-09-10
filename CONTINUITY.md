@@ -36,8 +36,10 @@ thing in the build.
 
 ## During the event
 
-All Graph and AI work is dated **2026-09-06 and 2026-09-07**, inside the window. 1,757 lines
-across 13 files.
+All Graph and AI work is dated **2026-09-06 onward**, inside the window and continuing to the
+deadline. As of 2026-09-10 that is 146 commits, 66 new files, and 5,223 lines across the 16
+files that carry the Graph and AI work. Those figures are a snapshot of a repository still
+being committed to, so the dates are the claim and the counts are only the count on the day.
 
 ### The Graph, as load-bearing infrastructure
 

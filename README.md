@@ -12,7 +12,8 @@ what was built during it is set out in [CONTINUITY.md](CONTINUITY.md).
 > private working repository so that deployment config and internal working notes stay out
 > of it. Its history is therefore an import: fifteen of its commits share one timestamp,
 > because that is when the code was published rather than when it was written. The working
-> repository has 131 commits across the event, and it can be shown to judges on request.
+> repository has 146 commits across the event as of 10 September, and it can be shown to
+> judges on request.
 > Nothing in this repository's `git log` should be read as evidence of when the work
 > happened, and CONTINUITY.md says the same thing at more length.
 
