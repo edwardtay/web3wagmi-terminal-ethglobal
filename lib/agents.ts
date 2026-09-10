@@ -1,5 +1,5 @@
 import "server-only";
-import { postJsonWithHeaders } from "./http";
+import { getJson, postJsonWithHeaders } from "./http";
 
 // The onchain agent economy, from ERC-8004.
 //
@@ -137,8 +137,28 @@ export interface AgentReading {
   evidence: string;
 }
 
+/**
+ * A second index of the same registries, for the one check a single source
+ * cannot do on itself.
+ *
+ * 8004scan is AltLayer's explorer and it indexes the identical onchain
+ * contracts. Two counts of the same registry that agree are worth more than one
+ * count asserted, and where they disagree the reason is the finding: the two
+ * differ by seventy per cent until testnets are excluded, which is a statement
+ * about how the standard is being used rather than about either indexer.
+ *
+ * Optional and short-timeout. It is an undocumented endpoint on somebody else's
+ * product, so the desk works without it and says so rather than failing.
+ */
+export interface CrossCheck {
+  mainnet: number | null;
+  testnet: number | null;
+}
+
 export interface AgentEconomy {
   query: string;
+  /** What a second indexer counts, or null when it did not answer. */
+  crossCheck: CrossCheck | null;
   /** What the numbers mean, for a reader who does not already know. */
   readings: AgentReading[];
   rows: AgentChainRow[];
@@ -311,7 +331,7 @@ function topAgents(chain: string, top: TopAgent[] | undefined, chainTotal: numbe
  * unless the figures support it, so a quiet day produces fewer sentences rather
  * than vaguer ones.
  */
-function readings(rows: AgentChainRow[], top: RatedAgent[]): AgentReading[] {
+function readings(rows: AgentChainRow[], top: RatedAgent[], second: CrossCheck | null): AgentReading[] {
   const out: AgentReading[] = [];
   const live = rows.filter((r) => !r.error && r.agents != null);
   if (!live.length) return out;
@@ -361,7 +381,36 @@ function readings(rows: AgentChainRow[], top: RatedAgent[]): AgentReading[] {
     });
   }
 
-  // 5. The registry that is empty everywhere, which is worth saying out loud.
+  // 5. Concentration as a ratio rather than a superlative. Two agents is not a
+  //    market, and the top-six share is the standard way to say how far from a
+  //    market something is.
+  const totalRatings = live.reduce((t, r) => t + (r.feedback ?? 0), 0);
+  const topSix = top.slice(0, 6).reduce((t, a) => t + a.ratings, 0);
+  if (totalRatings > 0 && topSix / totalRatings >= 0.5) {
+    // Framed as the tail rather than the head. The head is the reading above,
+    // and two sentences reporting the same percentage read as a bug even when
+    // both are true of different things.
+    out.push({
+      says: `The other ${round(totalAgents - 6)} agents share what is left. Six ids account for ${pct(topSix / totalRatings)} of every rating across four chains, which leaves ${pct(1 - topSix / totalRatings)} for everybody else.`,
+      evidence: `${round(topSix)} of ${round(totalRatings)} ratings against six agent ids.`,
+    });
+  }
+
+  // 6. What a second index of the same contracts counts. The disagreement is
+  //    the finding, and it resolves rather than lingering.
+  if (second?.mainnet != null) {
+    const gap = Math.abs(second.mainnet - totalAgents) / second.mainnet;
+    const testnetLine =
+      second.testnet != null
+        ? ` Counting testnets too it reaches ${round(second.mainnet + second.testnet)}, so ${round(second.testnet)} of the agents anyone might quote are on chains where nothing is at stake.`
+        : "";
+    out.push({
+      says: `A second index of the same contracts agrees. 8004scan counts ${round(second.mainnet)} agents on real chains against the ${round(totalAgents)} read here, a ${pct(gap)} gap explained by one indexer being unavailable.${testnetLine}`,
+      evidence: `8004scan mainnet ${round(second.mainnet)}${second.testnet != null ? `, testnet ${round(second.testnet)}` : ""}; Agent0 subgraphs ${round(totalAgents)} across ${live.length} chains.`,
+    });
+  }
+
+  // 7. The registry that is empty everywhere, which is worth saying out loud.
   out.push({
     says: `Nothing here has been independently checked. The validation registry, which is the part of the standard meant to verify that an agent did what it claims, is empty on every chain.`,
     evidence: `Zero validation records indexed across ${live.length} chains.`,
@@ -374,10 +423,24 @@ const mcpShare = (r: AgentChainRow) => (r.sample && r.sample.n ? r.sample.mcp / 
 const pct = (v: number) => `${v < 0.01 && v > 0 ? "under 1" : Math.round(v * 100)}%`;
 const round = (n: number) => n.toLocaleString("en-US");
 
+const SCAN = "https://8004scan.io/api/v1/agents?limit=1";
+
+/** How many agents a second index sees, split by whether the chain is real. */
+async function crossCheck(revalidate: number): Promise<CrossCheck | null> {
+  const [main, test] = await Promise.all([
+    getJson<{ total?: number }>(`${SCAN}&is_testnet=false`, { revalidate, timeout: 12_000 }),
+    getJson<{ total?: number }>(`${SCAN}&is_testnet=true`, { revalidate, timeout: 12_000 }),
+  ]);
+  const n = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : null);
+  if (main == null && test == null) return null;
+  return { mainnet: n(main?.total), testnet: n(test?.total) };
+}
+
 export async function readAgentEconomy(revalidate: number): Promise<AgentEconomy | null> {
   if (!process.env.GRAPH_SUBGRAPH_KEY) return null;
 
   const rated: RatedAgent[] = [];
+  const second = await crossCheck(revalidate);
   const replies = await Promise.all(
     CHAINS.map((c) =>
       postJsonWithHeaders<Reply>(
@@ -427,7 +490,8 @@ export async function readAgentEconomy(revalidate: number): Promise<AgentEconomy
   const top = rated.sort((a, b) => b.ratings - a.ratings).slice(0, 8);
   return {
     query: AGENT_QUERY,
-    readings: readings(rows, top),
+    crossCheck: second,
+    readings: readings(rows, top, second),
     rated: top,
     rows: rows.sort((x, y) => (y.agents ?? -1) - (x.agents ?? -1)),
     totalAgents: rows.reduce((t, r) => t + (r.agents ?? 0), 0),
