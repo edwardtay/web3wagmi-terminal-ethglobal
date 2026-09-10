@@ -44,6 +44,26 @@ const CHAINS: { label: string; id: string }[] = [
  * would report fifty thousand new agents a day on Ethereum instead of twenty
  * seven.
  */
+/**
+ * How many of the newest registrations and ratings each chain is asked for.
+ *
+ * The gateway caps a collection at a thousand and these are the newest by
+ * registration time, so what comes back is a recent sample rather than the
+ * population. Five hundred is enough to see a split and small enough that the
+ * whole desk still costs one query per chain: the capability fields ride along
+ * with the counters rather than doubling the request count.
+ *
+ * Everything derived from it is labelled as the recent sample it is, because
+ * the two are different claims. "Twenty-nine percent of agents speak MCP" is a
+ * statement about half a million agents and would be false. "Twenty-nine
+ * percent of the newest five hundred" is a statement about where the standard
+ * is heading, which is the more useful one anyway.
+ */
+const SAMPLE = 500;
+
+/** Below this many scored ratings, a median is one opinion rather than a middle. */
+const MIN_SCORES = 20;
+
 export const AGENT_QUERY = `{
   agents: protocolAgentStats_collection(interval: day, first: 8, orderBy: timestamp, orderDirection: desc) {
     timestamp
@@ -53,7 +73,19 @@ export const AGENT_QUERY = `{
     timestamp
     feedbackCreated
   }
+  files: agentRegistrationFiles(first: ${SAMPLE}, orderBy: createdAt, orderDirection: desc) {
+    active
+    x402Support
+    supportedTrusts
+    mcpEndpoint
+    a2aEndpoint
+  }
+  ratings: feedbackFiles(first: ${SAMPLE}, orderBy: createdAt, orderDirection: desc) {
+    valueRaw
+    valueDecimals
+  }
 }`;
+
 
 export interface AgentChainRow {
   chain: string;
@@ -69,6 +101,20 @@ export interface AgentChainRow {
    * this is the column that says whether anything is actually being used.
    */
   feedbackPerAgent: number | null;
+  /** What the newest registrations on this chain can do. A sample, not a census. */
+  sample: {
+    /** How many registration files the aggregates below rest on. */
+    n: number;
+    mcp: number;
+    a2a: number;
+    x402: number;
+    active: number;
+    /** Trust model to how many of the sample declare it. */
+    trusts: Record<string, number>;
+    /** Ratings sampled, and their median score out of 100. */
+    ratings: number;
+    medianScore: number | null;
+  } | null;
   /** Why this chain did not answer, when it did not. */
   error?: string;
 }
@@ -87,8 +133,19 @@ interface Bucket {
   agentRegistrations?: string;
   feedbackCreated?: string;
 }
+interface RegFile {
+  active?: boolean | null;
+  x402Support?: boolean | null;
+  supportedTrusts?: string[] | null;
+  mcpEndpoint?: string | null;
+  a2aEndpoint?: string | null;
+}
+interface RatingFile {
+  valueRaw?: string | null;
+  valueDecimals?: number | null;
+}
 interface Reply {
-  data?: { agents?: Bucket[]; feedback?: Bucket[] };
+  data?: { agents?: Bucket[]; feedback?: Bucket[]; files?: RegFile[]; ratings?: RatingFile[] };
   errors?: { message?: string }[];
 }
 
@@ -107,6 +164,53 @@ function series(buckets: Bucket[] | undefined, field: "agentRegistrations" | "fe
     return latest != null && then != null ? latest - then : null;
   };
   return { latest, d1: delta(1), d7: delta(7) };
+}
+
+/**
+ * What the newest registrations declare they can do.
+ *
+ * Counts rather than percentages, and the denominator travels with them, so a
+ * reader can see the claim rests on five hundred rows out of three hundred
+ * thousand rather than being told a share and left to assume a census.
+ *
+ * The score is a median rather than a mean because the scale is bounded at a
+ * hundred and the distribution is heavily skewed towards it: a handful of
+ * ones drag an average somewhere no rating actually sits.
+ */
+function summarise(files: RegFile[] | undefined, ratings: RatingFile[] | undefined) {
+  const f = files ?? [];
+  if (!f.length) return null;
+  const trusts: Record<string, number> = {};
+  for (const x of f) for (const t of x.supportedTrusts ?? []) trusts[t] = (trusts[t] ?? 0) + 1;
+
+  const scores: number[] = [];
+  for (const r of ratings ?? []) {
+    // Not Number(r.valueRaw). Number(null) is 0 rather than NaN, and most of
+    // these rows carry no value at all: 74 of 116 on Ethereum, 162 of 163 on
+    // BSC. Coerced, every one of those absences became a zero score and pulled
+    // the median from 60 to 0, which would have read as an agent economy whose
+    // users rate everything at the bottom of the scale.
+    if (r.valueRaw == null) continue;
+    const raw = Number(r.valueRaw);
+    if (!Number.isFinite(raw)) continue;
+    const v = raw / 10 ** Number(r.valueDecimals ?? 0);
+    if (Number.isFinite(v)) scores.push(v);
+  }
+  scores.sort((x, y) => x - y);
+
+  return {
+    n: f.length,
+    mcp: f.filter((x) => x.mcpEndpoint).length,
+    a2a: f.filter((x) => x.a2aEndpoint).length,
+    x402: f.filter((x) => x.x402Support).length,
+    active: f.filter((x) => x.active).length,
+    trusts,
+    ratings: scores.length,
+    // A median wants a distribution. BSC returns exactly one scored rating in
+    // the sample, and reporting that single number as the chain's median would
+    // be a statement about one person's opinion dressed as a statistic.
+    medianScore: scores.length >= MIN_SCORES ? scores[Math.floor(scores.length / 2)] : null,
+  };
 }
 
 export async function readAgentEconomy(revalidate: number): Promise<AgentEconomy | null> {
@@ -131,6 +235,7 @@ export async function readAgentEconomy(revalidate: number): Promise<AgentEconomy
       newAgents7d: null,
       feedback: null,
       feedbackPerAgent: null,
+      sample: null,
     };
     const reply = replies[i];
     if (!reply) return { ...blank, error: "No answer from the gateway." };
@@ -143,6 +248,7 @@ export async function readAgentEconomy(revalidate: number): Promise<AgentEconomy
     }
     const a = series(body.data?.agents, "agentRegistrations");
     const f = series(body.data?.feedback, "feedbackCreated");
+    const sample = summarise(body.data?.files, body.data?.ratings);
     return {
       chain: c.label,
       agents: a.latest,
@@ -150,6 +256,7 @@ export async function readAgentEconomy(revalidate: number): Promise<AgentEconomy
       newAgents7d: a.d7,
       feedback: f.latest,
       feedbackPerAgent: a.latest && a.latest > 0 && f.latest != null ? f.latest / a.latest : null,
+      sample,
     };
   });
 

@@ -28,6 +28,16 @@ interface Row {
   newAgents7d: number | null;
   feedback: number | null;
   feedbackPerAgent: number | null;
+  sample: {
+    n: number;
+    mcp: number;
+    a2a: number;
+    x402: number;
+    active: number;
+    trusts: Record<string, number>;
+    ratings: number;
+    medianScore: number | null;
+  } | null;
   error?: string;
 }
 interface Payload {
@@ -117,6 +127,62 @@ export function AgentEconomy() {
         {/* No count of chains that did not answer. The row carries its own
             reason, in place, and a line underneath saying one row has a reason
             on it is the sentence a reader has already read. */}
+        {/* What the newest registrations can do.
+            Counts with their denominator rather than percentages, because the
+            rows behind this are the most recent five hundred per chain and not
+            a census: "29% of agents speak MCP" would be a claim about half a
+            million of them and would be false. */}
+        {(() => {
+          const s = data.rows.map((r) => r.sample).filter((x): x is NonNullable<typeof x> => !!x);
+          if (!s.length) return null;
+          const sum = (k: "n" | "mcp" | "a2a" | "x402") => s.reduce((t, x) => t + x[k], 0);
+          const scored = s.filter((x) => x.medianScore != null);
+          const trusts: Record<string, number> = {};
+          for (const x of s) for (const [k, v] of Object.entries(x.trusts)) trusts[k] = (trusts[k] ?? 0) + v;
+          const top = Object.entries(trusts).sort((a, b) => b[1] - a[1]).slice(0, 3);
+          const n = sum("n");
+          return (
+            <div className="mt-3 border-t border-[var(--border2)] pt-3">
+              <div className="mb-2 font-mono text-[9px] uppercase tracking-wider text-[var(--text3)]">
+                what the newest {num(n, 0)} registrations declare
+              </div>
+              <div className="flex flex-wrap gap-x-5 gap-y-2">
+                <Stat label="speak MCP" value={`${num(sum("mcp"), 0)} of ${num(n, 0)}`} />
+                <Stat label="speak A2A" value={`${num(sum("a2a"), 0)} of ${num(n, 0)}`} />
+                <Stat label="take x402 payments" value={`${num(sum("x402"), 0)} of ${num(n, 0)}`} />
+                <Stat
+                  label="median rating"
+                  value={
+                    scored.length
+                      ? `${Math.round(scored.reduce((t, x) => t + (x.medianScore as number), 0) / scored.length)} of 100`
+                      : "n/a"
+                  }
+                />
+              </div>
+              {top.length > 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-1">
+                  <span className="font-mono text-[9px] uppercase tracking-wider text-[var(--text3)]">
+                    trust model
+                  </span>
+                  {top.map(([k, v]) => (
+                    <span
+                      key={k}
+                      className="rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-px font-mono text-[10px] text-[var(--text2)]"
+                    >
+                      {k} {num(v, 0)}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <p className="mt-2 text-[11px] leading-relaxed text-[var(--text3)]">
+                A recent sample rather than a census: the newest five hundred registrations on each
+                chain, which is what the gateway will return in one page. It says where the standard
+                is heading rather than what the whole population looks like.
+              </p>
+            </div>
+          );
+        })()}
+
         {data.asOf && <AsOf iso={data.asOf} staleMs={2 * 60 * 60 * 1000} />}
       </>
     );
@@ -130,6 +196,15 @@ export function AgentEconomy() {
     >
       <Panel>{body()}</Panel>
     </Section>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <div className="font-mono text-[9px] uppercase tracking-wider text-[var(--text3)]">{label}</div>
+      <div className="font-mono text-[13px] font-semibold text-[var(--text)]">{value}</div>
+    </div>
   );
 }
 
