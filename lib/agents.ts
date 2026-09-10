@@ -84,6 +84,16 @@ export const AGENT_QUERY = `{
     valueRaw
     valueDecimals
   }
+  top: agents(first: 6, orderBy: totalFeedback, orderDirection: desc) {
+    agentId
+    totalFeedback
+    registrationFile {
+      name
+      mcpEndpoint
+      a2aEndpoint
+      x402Support
+    }
+  }
 }`;
 
 
@@ -122,6 +132,8 @@ export interface AgentChainRow {
 export interface AgentEconomy {
   query: string;
   rows: AgentChainRow[];
+  /** The most rated agents anywhere, across chains, largest first. */
+  rated: RatedAgent[];
   totalAgents: number;
   totalFeedback: number;
   answered: number;
@@ -144,9 +156,37 @@ interface RatingFile {
   valueRaw?: string | null;
   valueDecimals?: number | null;
 }
+interface TopAgent {
+  agentId?: string;
+  totalFeedback?: string;
+  registrationFile?: {
+    name?: string | null;
+    mcpEndpoint?: string | null;
+    a2aEndpoint?: string | null;
+    x402Support?: boolean | null;
+  } | null;
+}
 interface Reply {
-  data?: { agents?: Bucket[]; feedback?: Bucket[]; files?: RegFile[]; ratings?: RatingFile[] };
+  data?: {
+    agents?: Bucket[];
+    feedback?: Bucket[];
+    files?: RegFile[];
+    ratings?: RatingFile[];
+    top?: TopAgent[];
+  };
   errors?: { message?: string }[];
+}
+
+/** One agent, named, with what it speaks and how much of its chain it holds. */
+export interface RatedAgent {
+  chain: string;
+  agentId: string;
+  /** From the registration file. Many agents never file one. */
+  name: string | null;
+  ratings: number;
+  /** This agent's share of every rating written on its chain, 0 to 1. */
+  shareOfChain: number | null;
+  speaks: string[];
 }
 
 const n = (v: unknown): number | null => {
@@ -213,9 +253,44 @@ function summarise(files: RegFile[] | undefined, ratings: RatingFile[] | undefin
   };
 }
 
+/**
+ * The most rated agents on one chain, with their share of it.
+ *
+ * The share is the point. Base averages 5.48 ratings per agent, which reads as
+ * a chain where agents are busy, and one agent holds 314,174 of the roughly
+ * half a million ratings written there. The average is arithmetically true and
+ * describes nobody: the economy is one entity and a long tail. A per-agent
+ * mean cannot show that and a share can.
+ */
+function topAgents(chain: string, top: TopAgent[] | undefined, chainTotal: number | null): RatedAgent[] {
+  return (top ?? [])
+    .map((t) => {
+      const ratings = Number(t.totalFeedback);
+      if (!Number.isFinite(ratings) || ratings <= 0) return null;
+      const rf = t.registrationFile ?? null;
+      const speaks: string[] = [];
+      if (rf?.mcpEndpoint) speaks.push("MCP");
+      if (rf?.a2aEndpoint) speaks.push("A2A");
+      if (rf?.x402Support) speaks.push("x402");
+      return {
+        chain,
+        agentId: String(t.agentId ?? ""),
+        // Many agents never file a registration document, so the name is
+        // absent rather than empty. Said plainly at the panel rather than
+        // filled in with an id dressed as a name.
+        name: rf?.name?.trim() || null,
+        ratings,
+        shareOfChain: chainTotal && chainTotal > 0 ? Math.min(1, ratings / chainTotal) : null,
+        speaks,
+      };
+    })
+    .filter((x): x is RatedAgent => x !== null);
+}
+
 export async function readAgentEconomy(revalidate: number): Promise<AgentEconomy | null> {
   if (!process.env.GRAPH_SUBGRAPH_KEY) return null;
 
+  const rated: RatedAgent[] = [];
   const replies = await Promise.all(
     CHAINS.map((c) =>
       postJsonWithHeaders<Reply>(
@@ -249,6 +324,7 @@ export async function readAgentEconomy(revalidate: number): Promise<AgentEconomy
     const a = series(body.data?.agents, "agentRegistrations");
     const f = series(body.data?.feedback, "feedbackCreated");
     const sample = summarise(body.data?.files, body.data?.ratings);
+    rated.push(...topAgents(c.label, body.data?.top, f.latest));
     return {
       chain: c.label,
       agents: a.latest,
@@ -263,6 +339,7 @@ export async function readAgentEconomy(revalidate: number): Promise<AgentEconomy
   const answered = rows.filter((r) => !r.error).length;
   return {
     query: AGENT_QUERY,
+    rated: rated.sort((a, b) => b.ratings - a.ratings).slice(0, 8),
     rows: rows.sort((x, y) => (y.agents ?? -1) - (x.agents ?? -1)),
     totalAgents: rows.reduce((t, r) => t + (r.agents ?? 0), 0),
     totalFeedback: rows.reduce((t, r) => t + (r.feedback ?? 0), 0),

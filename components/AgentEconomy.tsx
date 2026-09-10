@@ -48,6 +48,14 @@ interface Payload {
   totalFeedback: number;
   answered: number;
   attempted: number;
+  rated: {
+    chain: string;
+    agentId: string;
+    name: string | null;
+    ratings: number;
+    shareOfChain: number | null;
+    speaks: string[];
+  }[];
   note: string | null;
 }
 
@@ -67,10 +75,10 @@ export function AgentEconomy() {
     return (
       <>
         <p className="mb-3 text-[12px] leading-relaxed text-[var(--text2)]">
-          {num(data.totalAgents, 0)} agents hold an ERC-8004 identity across {data.answered} chains,
-          and clients have written {num(data.totalFeedback, 0)} ratings about them. Read the last
-          column rather than the first: an identity is close to free, a rating is not, so the ratio
-          is what says whether a chain is hosting an agent economy or a registration queue.
+          {num(data.totalAgents, 0)} agents hold an ERC-8004 identity across {data.answered} chains
+          and clients have written {num(data.totalFeedback, 0)} ratings about them. An identity is
+          close to free and a rating is not, so ratings per agent is the column that matters. Then
+          read the table under it, because that average is held up by very few agents.
         </p>
 
         <TableWrap maxHeight={320}>
@@ -81,7 +89,11 @@ export function AgentEconomy() {
               <Th label="24h" num hint="New identities registered yesterday. Taken as the difference between two cumulative daily counters, because the registry reports a running total rather than a per-day count." />
               <Th label="7d" num hint="New identities over the past seven days, on the same basis." />
               <Th label="Ratings" num hint="Feedback records written by clients about agents, cumulative. A rating is an onchain attestation with a score, so somebody had to use the agent and then pay to say so." />
-              <Th label="Per agent" num hint="Ratings divided by agents. Registration is close to free and a rating is not, so this separates a chain where agents are being used from one where they are only being created. Below about 0.1 the registry is mostly empty identities." />
+              <Th label="Per agent" num hint="Ratings divided by agents. Registration is close to free and a rating is not, so this separates a chain where agents are being used from one where they are only being created. Read it beside the table below: an average of five is one busy agent and a long tail, not five busy agents." />
+              <Th label="MCP" num hint="Of the newest 500 registrations on this chain, how many expose a Model Context Protocol endpoint. A sample of recent filings rather than a census." />
+              <Th label="A2A" num hint="Of the same 500, how many expose an agent-to-agent endpoint." />
+              <Th label="x402" num hint="Of the same 500, how many accept x402 payments, meaning the agent can be paid for a call rather than only registered." />
+              <Th label="Rating" num hint="Median score out of 100 among the newest ratings on this chain. Withheld below twenty scored ratings, because a median wants a distribution rather than one opinion." />
             </tr>
           </thead>
           <tbody>
@@ -98,7 +110,7 @@ export function AgentEconomy() {
                   </div>
                 </td>
                 {r.error ? (
-                  <td colSpan={5} className="break-words text-[11px] text-[var(--text3)]">
+                  <td colSpan={9} className="break-words text-[11px] text-[var(--text3)]">
                     {r.error}
                   </td>
                 ) : (
@@ -117,6 +129,12 @@ export function AgentEconomy() {
                     >
                       {r.feedbackPerAgent == null ? "n/a" : r.feedbackPerAgent.toFixed(2)}
                     </td>
+                    <td className="num text-[var(--text2)]">{share(r.sample?.mcp, r.sample?.n)}</td>
+                    <td className="num text-[var(--text2)]">{share(r.sample?.a2a, r.sample?.n)}</td>
+                    <td className="num text-[var(--text2)]">{share(r.sample?.x402, r.sample?.n)}</td>
+                    <td className="num text-[var(--text2)]">
+                      {r.sample?.medianScore == null ? "n/a" : r.sample.medianScore}
+                    </td>
                   </>
                 )}
               </tr>
@@ -127,61 +145,76 @@ export function AgentEconomy() {
         {/* No count of chains that did not answer. The row carries its own
             reason, in place, and a line underneath saying one row has a reason
             on it is the sentence a reader has already read. */}
-        {/* What the newest registrations can do.
-            Counts with their denominator rather than percentages, because the
-            rows behind this are the most recent five hundred per chain and not
-            a census: "29% of agents speak MCP" would be a claim about half a
-            million of them and would be false. */}
-        {(() => {
-          const s = data.rows.map((r) => r.sample).filter((x): x is NonNullable<typeof x> => !!x);
-          if (!s.length) return null;
-          const sum = (k: "n" | "mcp" | "a2a" | "x402") => s.reduce((t, x) => t + x[k], 0);
-          const scored = s.filter((x) => x.medianScore != null);
-          const trusts: Record<string, number> = {};
-          for (const x of s) for (const [k, v] of Object.entries(x.trusts)) trusts[k] = (trusts[k] ?? 0) + v;
-          const top = Object.entries(trusts).sort((a, b) => b[1] - a[1]).slice(0, 3);
-          const n = sum("n");
-          return (
-            <div className="mt-3 border-t border-[var(--border2)] pt-3">
-              <div className="mb-2 font-mono text-[9px] uppercase tracking-wider text-[var(--text3)]">
-                what the newest {num(n, 0)} registrations declare
-              </div>
-              <div className="flex flex-wrap gap-x-5 gap-y-2">
-                <Stat label="speak MCP" value={`${num(sum("mcp"), 0)} of ${num(n, 0)}`} />
-                <Stat label="speak A2A" value={`${num(sum("a2a"), 0)} of ${num(n, 0)}`} />
-                <Stat label="take x402 payments" value={`${num(sum("x402"), 0)} of ${num(n, 0)}`} />
-                <Stat
-                  label="median rating"
-                  value={
-                    scored.length
-                      ? `${Math.round(scored.reduce((t, x) => t + (x.medianScore as number), 0) / scored.length)} of 100`
-                      : "n/a"
-                  }
-                />
-              </div>
-              {top.length > 0 && (
-                <div className="mt-2 flex flex-wrap items-center gap-1">
-                  <span className="font-mono text-[9px] uppercase tracking-wider text-[var(--text3)]">
-                    trust model
-                  </span>
-                  {top.map(([k, v]) => (
-                    <span
-                      key={k}
-                      className="rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-px font-mono text-[10px] text-[var(--text2)]"
-                    >
-                      {k} {num(v, 0)}
-                    </span>
-                  ))}
-                </div>
-              )}
-              <p className="mt-2 text-[11px] leading-relaxed text-[var(--text3)]">
-                A recent sample rather than a census: the newest five hundred registrations on each
-                chain, which is what the gateway will return in one page. It says where the standard
-                is heading rather than what the whole population looks like.
-              </p>
+        {/* Who actually holds the ratings.
+            The per-agent average above is arithmetically true and describes
+            nobody: Base averages more than five ratings an agent because one
+            agent holds most of them. A mean cannot show that and a share can,
+            so the concentration is named rather than left in the average. */}
+        {data.rated.length > 0 && (
+          <div className="mt-4">
+            <div className="mb-2 font-mono text-[9px] uppercase tracking-wider text-[var(--text3)]">
+              most rated agents
             </div>
-          );
-        })()}
+            <TableWrap maxHeight={280}>
+              <thead>
+                <tr>
+                  <Th label="Agent" />
+                  <Th label="Chain" />
+                  <Th label="Speaks" hint="Which protocols its registration file declares: a Model Context Protocol endpoint, an agent-to-agent endpoint, and whether it can be paid over x402." />
+                  <Th label="Ratings" num hint="Ratings written about this agent, cumulative." />
+                  <Th label="Share" num hint="This agent's share of every rating written on its chain. It is the number that says whether a chain has an agent economy or one busy agent." />
+                </tr>
+              </thead>
+              <tbody>
+                {data.rated.map((a) => (
+                  <tr key={`${a.chain}-${a.agentId}`}>
+                    <td className="break-words font-semibold text-[var(--text)]">
+                      {a.name ?? <span className="font-normal text-[var(--text3)]">no registration file</span>}
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="inline-block h-2 w-2 shrink-0 rounded-full"
+                          style={{ background: brandColor(a.chain) ?? "var(--text3)" }}
+                          aria-hidden
+                        />
+                        <span className="text-[var(--text2)]">{a.chain}</span>
+                      </div>
+                    </td>
+                    <td>
+                      {a.speaks.length === 0 ? (
+                        <span className="text-[11px] text-[var(--text3)]">not declared</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {a.speaks.map((k) => (
+                            <span
+                              key={k}
+                              className="rounded border border-[var(--border)] bg-[var(--surface)] px-1.5 py-px font-mono text-[10px] text-[var(--text2)]"
+                            >
+                              {k}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td className="num font-semibold text-[var(--text)]">{num(a.ratings, 0)}</td>
+                    <td
+                      className="num font-semibold"
+                      style={{ color: (a.shareOfChain ?? 0) >= 0.25 ? "var(--gold)" : undefined }}
+                    >
+                      {a.shareOfChain == null ? "n/a" : `${(a.shareOfChain * 100).toFixed(0)}%`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </TableWrap>
+            <p className="mt-2 text-[11px] leading-relaxed text-[var(--text3)]">
+              Capability columns are the newest 500 registrations on each chain, which is one page
+              from the gateway. They say where the standard is heading rather than what the whole
+              population looks like.
+            </p>
+          </div>
+        )}
 
         {data.asOf && <AsOf iso={data.asOf} staleMs={2 * 60 * 60 * 1000} />}
       </>
@@ -199,13 +232,10 @@ export function AgentEconomy() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <div className="font-mono text-[9px] uppercase tracking-wider text-[var(--text3)]">{label}</div>
-      <div className="font-mono text-[13px] font-semibold text-[var(--text)]">{value}</div>
-    </div>
-  );
+/** A count against its own denominator, which never leaves the number's side. */
+function share(k: number | undefined, n: number | undefined): string {
+  if (k == null || !n) return "n/a";
+  return `${k} / ${n}`;
 }
 
 /**
